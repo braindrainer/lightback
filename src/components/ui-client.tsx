@@ -79,28 +79,31 @@ export function Menue({ label, eintraege, knopf, knopfKlasse, ausrichtung = 'rec
 
   const zu = useCallback((fokus = true) => { setOffen(false); setPos(null); if (fokus) btn.current?.focus(); }, []);
 
-  useLayoutEffect(() => {
-    if (!offen || !btn.current || !menu.current) return;
+  // Position am Knopf; beim Scrollen mitwandern, erst schließen, wenn der Knopf aus dem Bild ist
+  const platzieren = useCallback(() => {
+    if (!btn.current || !menu.current) return;
     const r = btn.current.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > window.innerHeight) { zu(false); return; }
     const m = menu.current.getBoundingClientRect();
     const unten = window.innerHeight - r.bottom;
     const top = unten < m.height + 12 && r.top > m.height + 12 ? r.top - m.height - 6 : r.bottom + 6;
     let left = ausrichtung === 'rechts' ? r.right - m.width : r.left;
     left = Math.max(8, Math.min(left, window.innerWidth - m.width - 8));
     setPos({ top, left });
-  }, [offen, ausrichtung]);
+  }, [ausrichtung, zu]);
+
+  useLayoutEffect(() => { if (offen) platzieren(); }, [offen, platzieren]);
 
   useEffect(() => {
     if (!offen) return;
     const erst = items()[0];
     erst?.focus();
     const klick = (e: MouseEvent) => { if (!menu.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) zu(false); };
-    const weg = () => zu(false);
     document.addEventListener('mousedown', klick);
-    window.addEventListener('scroll', weg, true);
-    window.addEventListener('resize', weg);
-    return () => { document.removeEventListener('mousedown', klick); window.removeEventListener('scroll', weg, true); window.removeEventListener('resize', weg); };
-  }, [offen, zu]);
+    window.addEventListener('scroll', platzieren, true);
+    window.addEventListener('resize', platzieren);
+    return () => { document.removeEventListener('mousedown', klick); window.removeEventListener('scroll', platzieren, true); window.removeEventListener('resize', platzieren); };
+  }, [offen, zu, platzieren]);
 
   const taste = (e: React.KeyboardEvent) => {
     const l = items();
@@ -176,7 +179,7 @@ export function Drawer({ offen, onClose, titel, untertitel, children, fuss, brei
   const p = useDialog(offen, onClose);
   return (
     <dialog {...p} aria-labelledby={id}
-      className={`lb-drawer m-0 ml-auto h-dvh max-h-none w-full ${breit ? 'sm:max-w-2xl' : 'sm:max-w-lg'} border-0 bg-card p-0 text-ink shadow-schwebend backdrop:bg-nacht/50 sm:border-l sm:border-line`}>
+      className={`lb-drawer m-0 ml-auto h-dvh max-h-none w-full max-w-none ${breit ? 'sm:max-w-2xl' : 'sm:max-w-lg'} border-0 bg-card p-0 text-ink shadow-schwebend backdrop:bg-nacht/50 sm:border-l sm:border-line`}>
       {offen && (
         <div className="flex h-full flex-col">
           <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
