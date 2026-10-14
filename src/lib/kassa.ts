@@ -120,7 +120,7 @@ export async function verkaufen(p: { registerId: string; sessionId: string; user
     let hold = null;
     for (let versuch = 0; versuch < 3 && !hold; versuch++) {
       const plaetze = await bestePlaetze(show.id, ticketZeilen.map((t) => ({ kat: t.kat, art: t.art, anzahl: t.anzahl })));
-      try { hold = await reservieren(show.id, plaetze); } catch (e) { if (!(e instanceof PlatzBelegt)) throw e; }
+      try { hold = await reservieren(show.id, plaetze, { vorOrt: true }); } catch (e) { if (!(e instanceof PlatzBelegt)) throw e; }
     }
     if (!hold) throw new Error('Die Plätze wurden gerade anderweitig vergeben – bitte erneut versuchen.');
     const order = await bestellungAnlegen({ holdToken: hold.token, channel: 'abendkasse', createdById: p.user.id, note: `Kassa ${reg.kassenId}` });

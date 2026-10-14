@@ -60,7 +60,7 @@ export default async function KassaSeite({ searchParams }: { searchParams: Promi
   const tagEnde = new Date(wienZuUtc(wienTag(jetzt), '00:00').getTime() + 864e5);
   const [produkte, shows] = await Promise.all([
     db.product.findMany({ where: { active: true }, orderBy: [{ sort: 'asc' }, { name: 'asc' }] }),
-    db.show.findMany({ where: { status: 'verkauf', startsAt: { gt: jetzt, lt: new Date(Math.max(tagEnde.getTime(), jetzt.getTime() + 6 * 3600e3)) } }, orderBy: { startsAt: 'asc' }, take: 4 }),
+    db.show.findMany({ where: { status: 'verkauf', startsAt: { gt: new Date(jetzt.getTime() - 30 * 60e3), lt: new Date(Math.max(tagEnde.getTime(), jetzt.getTime() + 6 * 3600e3)) } }, orderBy: { startsAt: 'asc' }, take: 4 }),
   ]);
   const showDaten = await Promise.all(shows.map(async (s) => {
     const a = await auslastung(s.id);

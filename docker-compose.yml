@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://lightback:${POSTGRES_PASSWORD}@db:5432/lightback
+      DATABASE_URL: postgresql://lightback:${POSTGRES_PASSWORD}@db:5432/lightback?connection_limit=20
       GOTENBERG_URL: http://gotenberg:3000
     volumes:
       - ./data:/data
