@@ -9,6 +9,7 @@
 // - Zahlungen über Anbieter landen auf Geldtransit-Konten; die Auszahlung aufs Bank­konto gleicht sie aus.
 import type { Prisma } from '@prisma/client';
 import { db, getSettings } from './db';
+import { wienTag } from './dates';
 
 type Tx = Prisma.TransactionClient;
 
@@ -93,7 +94,9 @@ export async function buchen(b: Buchung, tx: Tx | typeof db = db) {
   if (soll !== haben) throw new Error(`Buchung nicht ausgeglichen: Soll ${soll} ≠ Haben ${haben} (${b.text})`);
   if (soll === 0) return null;
   const st = await (tx as typeof db).settings.findUnique({ where: { id: 1 } });
-  if (st?.lockedUntil && b.date <= st.lockedUntil) throw new Error(`Zeitraum bis ${st.lockedUntil.toISOString().slice(0, 10)} ist festgeschrieben`);
+  // Buchungsdatum = Kalendertag in Wien (sonst landen Verkäufe zwischen 0 und 2 Uhr am Vortag)
+  const tag = new Date(wienTag(b.date));
+  if (st?.lockedUntil && tag <= st.lockedUntil) throw new Error(`Zeitraum bis ${st.lockedUntil.toISOString().slice(0, 10)} ist festgeschrieben`);
   if (b.sourceId) {
     const da = await tx.journalEntry.findFirst({ where: { source: b.source, sourceId: b.sourceId, text: b.text } });
     if (da) return da;
@@ -104,7 +107,7 @@ export async function buchen(b: Buchung, tx: Tx | typeof db = db) {
   for (const n of nummern) if (!id.has(n)) throw new Error(`Konto ${n} fehlt`);
   return tx.journalEntry.create({
     data: {
-      date: b.date, text: b.text, docRef: b.docRef ?? '', source: b.source, sourceId: b.sourceId ?? null, createdById: b.createdById ?? null,
+      date: tag, text: b.text, docRef: b.docRef ?? '', source: b.source, sourceId: b.sourceId ?? null, createdById: b.createdById ?? null,
       lines: { create: zeilen.map((z) => ({ accountId: id.get(z.konto)!, debitCents: z.soll ?? 0, creditCents: z.haben ?? 0, vatCode: z.vatCode ?? null, baseCents: z.base ?? null, text: z.text ?? null })) },
     },
   });

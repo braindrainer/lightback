@@ -124,7 +124,8 @@ export async function bezahlt(orderId: string, z: { provider: string; providerRe
   }, TX_OPT);
   if (fertig) {
     cacheVerwerfen(fertig.showId);
-    await ticketMail(orderId).catch(() => {});
+    // Mail im Hintergrund: QR-Bilder und SMTP sollen die Antwort an den Shop nicht verzögern
+    void ticketMail(orderId).catch(() => {});
   }
   return fertig;
 }
