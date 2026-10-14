@@ -89,7 +89,7 @@ curl -X POST -H "Authorization: Bearer $LOC_KEY" -H "Content-Type: application/j
         <p className="mt-2">Fehler kommen immer im selben Format:</p>
         <Code>{`{ "error": { "code": "platz_belegt", "message": "Mindestens ein Platz ist nicht mehr frei", "details": { "seats": ["5-10"] } } }`}</Code>
         <div className="mt-3 overflow-x-auto rounded-lg border border-line bg-white">
-          <table className="table">
+          <table tabIndex={0} className="table">
             <thead><tr><th scope="col">HTTP</th><th scope="col">code</th><th scope="col">Bedeutung</th></tr></thead>
             <tbody>{FEHLER.map(([s, c, t]) => <tr key={c}><td className="num">{s}</td><td className="font-mono text-[13px]">{c}</td><td>{t}</td></tr>)}</tbody>
           </table>

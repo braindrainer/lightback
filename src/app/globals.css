@@ -50,7 +50,7 @@ html, body { background: var(--color-paper); color: var(--color-ink); }
 
 /* Breite Tabellen scrollen in sich selbst statt die Seite zu verbreitern */
 @media (max-width: 1023px) {
-  main table.table { display: block; overflow-x: auto; max-width: 100%; }
+  main table.table { display: block; overflow-x: auto; max-width: 100%; position: relative; }
 }
 .card { overflow-x: auto; }
 main .grid > *, main .flex > * { min-width: 0; }

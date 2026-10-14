@@ -24,7 +24,7 @@ export function Auslastung({ shows }: { shows: ShowBalken[] }) {
           const x = L + i * breite + breite * 0.18, w = Math.max(2, breite * 0.64);
           const v = teil(s, s.verkauft), r = teil(s, s.reserviert), g = teil(s, s.gesperrt);
           return (
-            <Link key={s.id} href={`/vorstellungen/${s.id}`} aria-label={`${s.label}: ${s.verkauft} verkauft`}>
+            <g key={s.id}>
               <rect x={x} y={y(1)} width={w} height={y(0) - y(1)} fill="#f1ebdf" rx="3" />
               <rect x={x} y={y(v)} width={w} height={y(0) - y(v)} fill="#8a6a1f" rx="3" />
               {s.eingelassen > 0 && <rect x={x} y={y(teil(s, s.eingelassen))} width={w} height={y(0) - y(teil(s, s.eingelassen))} fill="#4c3a10" rx="3" />}
@@ -33,7 +33,7 @@ export function Auslastung({ shows }: { shows: ShowBalken[] }) {
               <title>{`${s.label}: ${s.verkauft} verkauft, ${s.reserviert} reserviert, ${s.gesperrt} gesperrt, ${s.kapazitaet - s.verkauft - s.reserviert - s.gesperrt} frei`}</title>
               {(i % Math.ceil(n / 14) === 0) && <text x={x + w / 2} y={H - 18} textAnchor="middle" fontSize="11" fill="#59617a">{s.kurz.split(' ')[0]}</text>}
               {(i % Math.ceil(n / 14) === 0) && <text x={x + w / 2} y={H - 5} textAnchor="middle" fontSize="10" fill="#59617a">{s.kurz.split(' ')[1]}</text>}
-            </Link>
+            </g>
           );
         })}
         <line x1={L} x2={W - R} y1={y(0)} y2={y(0)} stroke="#59617a" />
@@ -49,7 +49,7 @@ export function Auslastung({ shows }: { shows: ShowBalken[] }) {
           <table className="table">
             <caption className="sr-only">Auslastung der nächsten Vorstellungen</caption>
             <thead><tr><th scope="col">Vorstellung</th><th scope="col" className="text-right">Verkauft</th><th scope="col" className="text-right">Reserviert</th><th scope="col" className="text-right">Gesperrt</th><th scope="col" className="text-right">Frei</th></tr></thead>
-            <tbody>{shows.map((s) => <tr key={s.id}><td>{s.label}</td><td className="num text-right">{s.verkauft}</td><td className="num text-right">{s.reserviert}</td><td className="num text-right">{s.gesperrt}</td><td className="num text-right">{s.kapazitaet - s.verkauft - s.reserviert - s.gesperrt}</td></tr>)}</tbody>
+            <tbody>{shows.map((s) => <tr key={s.id}><td><Link href={`/vorstellungen/${s.id}`} className="underline-offset-4 hover:underline">{s.label}</Link></td><td className="num text-right">{s.verkauft}</td><td className="num text-right">{s.reserviert}</td><td className="num text-right">{s.gesperrt}</td><td className="num text-right">{s.kapazitaet - s.verkauft - s.reserviert - s.gesperrt}</td></tr>)}</tbody>
           </table>
         </div>
       </details>
