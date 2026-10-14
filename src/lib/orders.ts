@@ -12,6 +12,8 @@ import { erstatten } from './payments';
 import { preis, SITZ, sitzName, TICKET_UST, type Kat, type Preise } from './saal';
 import { cacheVerwerfen, holdSichern, zuSperren } from './seats';
 import { neuerCode, qrInhalt, qrPng } from './tickets';
+import { backendUrl, ticketsAusBestellung, ticketsPdf, type TicketDaten } from './ticket-html';
+import { markenLayout, ticketKartenMail } from './ticket-mail';
 
 type Tx = Prisma.TransactionClient;
 export type KundeEingabe = { email: string; firstName: string; lastName: string; phone?: string; company?: string; vatId?: string; street?: string; zip?: string; city?: string; country?: string; newsletter?: boolean; locale?: string };
@@ -236,26 +238,36 @@ export async function rechnungFuerBestellung(tx: Tx, orderId: string) {
   });
 }
 
-/** Buchungsbestätigung mit QR-Codes (inline) senden */
+/** Buchungsbestätigung: Tickets als Karten mit QR (inline), Link zur Handy-Ansicht, Tickets als PDF im Anhang */
 export async function ticketMail(orderId: string) {
-  const o = await db.order.findUniqueOrThrow({ where: { id: orderId }, include: { tickets: { where: { status: { not: 'storniert' } } }, customer: true, show: true } });
+  const o = await db.order.findUniqueOrThrow({ where: { id: orderId }, include: { tickets: { include: { show: true } }, customer: true, show: true } });
   if (!o.customer?.email) return null;
   const app = process.env.PUBLIC_ORIGIN ?? '';
+  const backend = backendUrl();
+  const liste = ticketsAusBestellung(o).filter((t) => t.status !== 'storniert');
   const anhaenge: Anhang[] = [];
-  const zeilen: string[] = [];
-  for (const t of o.tickets) {
+  const karten: { t: TicketDaten; cid: string }[] = [];
+  for (const t of liste) {
     const cid = `qr-${t.code}@loc`;
     anhaenge.push({ filename: `ticket-${t.code}.png`, content: await qrPng(qrInhalt(t.code, t.showId)), contentType: 'image/png', cid });
-    zeilen.push(`<tr><td style="padding:12px 0;border-top:1px solid #e2dacb"><img src="cid:${cid}" width="140" height="140" alt="QR-Code Ticket ${t.code}" style="display:block"></td>
-<td style="padding:12px 0 12px 16px;border-top:1px solid #e2dacb;vertical-align:middle"><strong>${sitzName(t.seatId)}</strong><br>${t.kat === 'R' ? 'inkl. Begleitperson' : `Kategorie ${t.kat}`} · ${formatEur(t.priceCents)}<br><span style="font-family:monospace">${t.code}</span></td></tr>`);
+    karten.push({ t, cid });
+  }
+  // Ohne PDF trotzdem senden – die QR-Codes stehen in der Mail
+  try {
+    const p = await ticketsPdf(o);
+    if (p) anhaenge.push({ filename: `Tickets-${o.number}.pdf`, content: p.pdf, contentType: 'application/pdf' });
+  } catch (e) {
+    console.error(`Ticket-PDF für ${o.number} fehlgeschlagen:`, (e as Error).message);
   }
   const v = await vorlage('buchung');
   const werte = {
     vorname: o.customer.firstName, nachname: o.customer.lastName, datum: fmtDatum(o.show.startsAt), uhrzeit: fmtZeit(o.show.startsAt),
     bestellnummer: o.number, summe: formatEur(o.totalCents), verwalten_url: `${app}/de/buchung/${o.manageToken}`,
-    tickets_html: `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:16px 0">${zeilen.join('')}</table>`,
+    tickets_html: ticketKartenMail(karten, { mobil: `${backend}/t/${o.manageToken}`, pdf: `${backend}/api/tickets/${o.manageToken}.pdf`, verwalten: `${app}/de/buchung/${o.manageToken}` }),
   };
-  return senden({ to: o.customer.email, subject: fuellen(v.subject, werte), html: layout(fuellen(v.subject, werte), fuellen(v.body, werte), await fussText()), template: 'buchung', orderId: o.id, anhaenge });
+  const titel = fuellen(v.subject, werte);
+  const vorschau = `${liste.length === 1 ? 'Ihr Ticket' : `Ihre ${liste.length} Tickets`} für ${fmtDatum(o.show.startsAt)}, ${fmtZeit(o.show.startsAt)} Uhr – Bestellung ${o.number}`;
+  return senden({ to: o.customer.email, subject: titel, html: markenLayout(titel, fuellen(v.body, werte), await fussText(), vorschau), template: 'buchung', orderId: o.id, anhaenge });
 }
 
 /**

@@ -6,6 +6,7 @@ import { fmtDatum, wienZuUtc } from '@/lib/dates';
 import { heute, letzterTag, MONATE } from '@/lib/finanzen/zeitraum';
 import { Seiten } from '@/components/finanzen/Seiten';
 import { Empty, Money, PageHeader, StatusPill } from '@/components/ui';
+import RechnungModal from '@/components/finanzen/RechnungModal';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Rechnungen' };
@@ -76,7 +77,7 @@ export default async function Rechnungen({ searchParams }: { searchParams: Sp })
                     <td>{r.kind === 'storno' ? '–' : <StatusPill status={r.status} />}</td>
                     <td className="text-right"><Money cents={r.netCents} /></td>
                     <td className="text-right"><Money cents={r.grossCents} /></td>
-                    <td><a href={`/rechnungen/${r.id}/pdf?download=1`} className="text-sm underline underline-offset-4">PDF<span className="sr-only"> {r.number} herunterladen</span></a></td>
+                    <td className="whitespace-nowrap"><RechnungModal id={r.id} nummer={r.number} storno={r.kind === 'storno'} knopf="Ansehen" className="btn-secondary btn-sm mr-2" /><a href={`/rechnungen/${r.id}/pdf?download=1`} className="text-sm underline underline-offset-4">PDF<span className="sr-only"> {r.number} herunterladen</span></a></td>
                   </tr>
                 );
               })}
