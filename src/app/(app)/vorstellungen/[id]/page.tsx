@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth';
+import { Verlauf } from '@/components/Verlauf';
 import { db } from '@/lib/db';
 import { fmtDatumZeit, fmtTag, fmtZeit, wienTag } from '@/lib/dates';
 import { formatEur } from '@/lib/money';
@@ -123,6 +124,7 @@ export default async function Vorstellung({ params }: { params: Promise<{ id: st
           </table>
         ) : <Empty>Noch keine Bestellungen.</Empty>}
       </section>
+      <Verlauf ziele={[{ entity: 'show', ids: [show.id] }, { entity: 'showSeries', ids: [show.seriesId] }]} titel="Verlauf der Vorstellung" />
     </>
   );
 }

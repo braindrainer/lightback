@@ -31,18 +31,21 @@ function FristFeld({ abgelaufen, darf }: { abgelaufen: boolean; darf: boolean })
   ) : <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Die 24-Stunden-Frist ist vorbei. Nur die Leitung kann eine Ausnahme machen.</p>;
 }
 
-export function StornoDialog({ action, tickets, fristAbgelaufen, darfFrist, versteckt }: { action: Aktion; tickets: TicketZeile[]; fristAbgelaufen: boolean; darfFrist: boolean; versteckt?: boolean }) {
+/** einzeln: nur dieses eine Ticket stornieren (Ticket-Detailseite) */
+export function StornoDialog({ action, tickets, fristAbgelaufen, darfFrist, versteckt, einzeln }: { action: Aktion; tickets: TicketZeile[]; fristAbgelaufen: boolean; darfFrist: boolean; versteckt?: boolean; einzeln?: boolean }) {
   const [umfang, setUmfang] = useState<'alle' | 'einzeln'>('alle');
   const [gutschein, setGutschein] = useState<string>();
   return (
-    <DialogKnopf titel="Stornieren" knopf="Stornieren" knopfKlasse="btn-danger" versteckt={versteckt}>
+    <DialogKnopf titel={einzeln ? 'Ticket stornieren' : 'Stornieren'} knopf={einzeln ? 'Ticket stornieren' : 'Stornieren'} knopfKlasse="btn-danger" versteckt={versteckt}>
       <AktionForm action={action} onErfolg={(e) => setGutschein(e.daten?.gutschein as string | undefined)}>
-        <fieldset>
+        {einzeln ? (
+          <p className="text-sm"><input type="hidden" name="umfang" value="einzeln" /><input type="hidden" name="ticket" value={tickets[0]?.id} />Storniert wird nur {tickets[0]?.label} · {formatEur(tickets[0]?.cents ?? 0)}. Die übrigen Tickets der Bestellung bleiben gültig.</p>
+        ) : <fieldset>
           <legend className="label">Umfang</legend>
           <label className="flex min-h-8 items-center gap-2 text-sm"><input type="radio" name="umfang" value="alle" checked={umfang === 'alle'} onChange={() => setUmfang('alle')} className="h-4 w-4 accent-accent" />Ganze Bestellung ({tickets.length} Tickets, {formatEur(tickets.reduce((s, t) => s + t.cents, 0))})</label>
           <label className="flex min-h-8 items-center gap-2 text-sm"><input type="radio" name="umfang" value="einzeln" checked={umfang === 'einzeln'} onChange={() => setUmfang('einzeln')} className="h-4 w-4 accent-accent" />Einzelne Tickets</label>
-        </fieldset>
-        {umfang === 'einzeln' && (
+        </fieldset>}
+        {!einzeln && umfang === 'einzeln' && (
           <fieldset className="grid gap-1 rounded-lg border border-line p-3">
             <legend className="px-1 text-sm font-semibold">Tickets</legend>
             {tickets.map((t) => <label key={t.id} className="flex min-h-8 items-center gap-2 text-sm"><input type="checkbox" name="ticket" value={t.id} className="h-4 w-4 accent-accent" />{t.label} · {formatEur(t.cents)}</label>)}

@@ -2,7 +2,6 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { assertRole } from '@/lib/auth';
-import { audit } from '@/lib/audit';
 import { ausfuehren, pruefen, type Ergebnis } from '@/lib/finanzen/aktion';
 import { auszahlungErfassen } from '@/lib/finanzen/buchhaltung';
 import { euroZuCent, tag } from '@/lib/finanzen/zeitraum';
@@ -20,7 +19,6 @@ export async function auszahlungAktion(_: Ergebnis, fd: FormData): Promise<Ergeb
     }), fd);
     const ids = fd.getAll('zahlung').map(String).filter(Boolean);
     const r = await auszahlungErfassen({ provider: d.provider, datum: tag(d.datum)!, bruttoCents: d.brutto!, gebuehrCents: d.gebuehr, ref: d.ref, paymentIds: ids }, u.id);
-    await audit(u, 'auszahlung.erfassen', 'settlement', r.entry?.id, { ...d, zahlungen: ids.length });
     revalidatePath('/zahlungen');
     return `Auszahlung über ${formatEur(d.brutto!)} gebucht (Bank ${formatEur(d.brutto! - d.gebuehr)}, Gebühren ${formatEur(d.gebuehr)}); ${r.abgerechnet} Zahlungen als abgerechnet markiert.`;
   });

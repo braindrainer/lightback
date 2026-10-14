@@ -1,12 +1,15 @@
 import { currentUser, hat } from '@/lib/auth';
+import { db } from '@/lib/db';
 import { rechnungPdf, rechnungVorschauHtml } from '@/lib/finanzen/rechnungen';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const u = await currentUser();
-  if (!hat(u, 'buchhaltung')) return new Response('Keine Berechtigung', { status: 403 });
+  if (!hat(u, 'buchhaltung', 'leitung')) return new Response('Keine Berechtigung', { status: 403 });
   const { id } = await params;
+  // Leitung sieht nur Rechnungen aus Bestellungen, manuelle B2B-Rechnungen bleiben bei der Buchhaltung
+  if (!hat(u, 'buchhaltung') && !(await db.invoice.findUnique({ where: { id }, select: { orderId: true } }))?.orderId) return new Response('Keine Berechtigung', { status: 403 });
   const url = new URL(req.url);
   try {
     if (url.searchParams.get('html')) {

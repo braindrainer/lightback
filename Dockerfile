@@ -20,6 +20,8 @@ COPY --from=build /app/public ./public
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/scripts/schutz.ts ./scripts/schutz.ts
+COPY --from=build /app/src/lib/schutz.ts /app/src/lib/audit-kette.ts ./src/lib/
 COPY docker-entrypoint.sh ./
 USER app
 EXPOSE 3300

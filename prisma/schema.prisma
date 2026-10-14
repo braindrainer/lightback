@@ -74,17 +74,26 @@ model Settings {
   updatedAt        DateTime @updatedAt
 }
 
+/// Revisionssicheres Protokoll: nur anhängen (Trigger in src/lib/schutz.ts), Hash-Kette über prevHash/hash
 model AuditLog {
   id        String   @id @default(cuid())
+  seq       Int      @unique @default(autoincrement()) // lückenlose Reihenfolge der Kette (Lücken nur durch abgebrochene Transaktionen)
   userId    String?
   userName  String?
   action    String
   entity    String
   entityId  String?
   data      Json?
+  vorher    Json? // geänderte Felder vor der Aktion
+  nachher   Json? // geänderte Felder nach der Aktion
+  ip        String?
+  userAgent String?
+  prevHash  String?
+  hash      String? // SHA-256 über den kanonischen Eintrag inkl. prevHash (src/lib/audit-kette.ts)
   createdAt DateTime @default(now())
 
   @@index([entity, entityId])
+  @@index([entity, entityId, createdAt])
   @@index([createdAt])
 }
 

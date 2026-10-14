@@ -6,10 +6,12 @@ import { fmtDatumZeit } from '@/lib/dates';
 import { stornoMoeglich } from '@/lib/orders';
 import { sitzName } from '@/lib/saal';
 import { Empty, Money, PageHeader, StatusPill } from '@/components/ui';
+import { Verlauf } from '@/components/Verlauf';
+import { AktionForm, Absenden } from '@/components/verkauf/form';
 import { AktionKnopf, KundeFormular, NotizFormular, StornoDialog, UmbuchungDialog, ZahlungErhalten } from '@/components/verkauf/BestellungAktionen';
 import { showOptionen } from '@/components/verkauf/showOptionen';
 import { ART_NAME, GRUND_NAME, KANAL_NAME, KAT_NAME, METHODE_NAME, ZAHLART_NAME } from '@/components/verkauf/texte';
-import { kundeSpeichern, notizSpeichern, reservierungAufheben, stornoAktion, ticketsSenden, umbuchungAktion, zahlungErhalten } from '../actions';
+import { kundeSpeichern, notizSpeichern, rechnungErstellenAktion, rechnungSendenAktion, reservierungAufheben, stornoAktion, ticketsSenden, umbuchungAktion, zahlungErhalten } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,6 +58,9 @@ export default async function Bestellung({ params }: { params: Promise<{ id: str
   const c = o.customer;
   const gv = new Map(gutscheine.map((g) => [g.id, g]));
   const offen = o.totalCents - o.voucherCents;
+  const darfRechnung = hat(u, 'leitung', 'buchhaltung');
+  const buchhaltung = hat(u, 'buchhaltung');
+  const rechnungFehlt = ['bezahlt', 'teilstorniert'].includes(o.status) && !o.invoices.some((i) => i.kind === 'rechnung');
 
   return (
     <>
@@ -100,6 +105,54 @@ export default async function Bestellung({ params }: { params: Promise<{ id: str
         </Abschnitt>
       </div>
 
+      <Abschnitt id="rechnungen" titel={o.invoices.length > 1 ? `Rechnungen (${o.invoices.length})` : 'Rechnung'}>
+        {o.invoices.length ? (
+          <ul className="grid gap-4 px-5 pb-5">
+            {[...o.invoices].reverse().map((i, n) => (
+              <li key={i.id} className="rounded-lg border border-line p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="text-base font-semibold">
+                    {i.kind === 'storno' ? 'Stornorechnung' : 'Rechnung'}{' '}
+                    {buchhaltung ? <Link href={`/rechnungen/${i.id}`} className="font-mono underline underline-offset-4">{i.number}</Link> : <span className="font-mono">{i.number}</span>}
+                  </h3>
+                  <span className="flex flex-wrap items-center gap-2 text-sm">
+                    {i.kind === 'storno' ? <StatusPill status="storniert" label="Storno" /> : <StatusPill status={i.status} />}
+                    {i.sentAt ? <span className="text-muted">gesendet {fmtDatumZeit(i.sentAt)}</span> : <span className="text-muted">noch nicht per E-Mail gesendet</span>}
+                  </span>
+                </div>
+                <dl className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[repeat(4,auto)] sm:justify-start">
+                  <div><dt className="text-muted">Datum</dt><dd>{fmtDatumZeit(i.issueDate)}</dd></div>
+                  <div><dt className="text-muted">Netto</dt><dd><Money cents={i.netCents} /></dd></div>
+                  <div><dt className="text-muted">USt</dt><dd><Money cents={i.vatCents} /></dd></div>
+                  <div><dt className="text-muted">Brutto</dt><dd><Money cents={i.grossCents} className="font-semibold" /></dd></div>
+                </dl>
+                {darfRechnung && (
+                  <>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <a href={`/rechnungen/${i.id}/pdf`} target="_blank" rel="noopener" className="btn-primary btn-sm">PDF ansehen<span className="sr-only"> – {i.number}, neues Fenster</span></a>
+                      <a href={`/rechnungen/${i.id}/pdf?download=1`} className="btn-secondary btn-sm">PDF herunterladen<span className="sr-only"> – {i.number}</span></a>
+                    </div>
+                    <AktionForm action={rechnungSendenAktion.bind(null, o.id, i.id)} className="mt-3 grid max-w-xl gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                      <div><label htmlFor={`re-an-${i.id}`} className="label">Per E-Mail senden an</label><input id={`re-an-${i.id}`} name="an" type="email" required autoComplete="off" defaultValue={c?.email ?? ''} className="input" /></div>
+                      <Absenden className="btn-secondary">Per E-Mail senden</Absenden>
+                    </AktionForm>
+                    <details className="mt-3" open={n === 0 && o.invoices.length === 1}>
+                      <summary className="cursor-pointer text-sm font-medium text-accent-deep underline underline-offset-4">Vorschau {i.number}</summary>
+                      <iframe title={`Vorschau ${i.kind === 'storno' ? 'Stornorechnung' : 'Rechnung'} ${i.number}`} src={`/rechnungen/${i.id}/pdf?html=1`} sandbox="" loading="lazy" className="mt-2 h-[560px] w-full rounded-lg border border-line bg-white" />
+                    </details>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="px-5 pb-5">
+            <Empty>{rechnungFehlt ? 'Zu dieser bezahlten Bestellung gibt es noch keine Rechnung.' : 'Die Rechnung entsteht mit dem Zahlungseingang.'}</Empty>
+            {rechnungFehlt && darfRechnung && <AktionKnopf action={rechnungErstellenAktion.bind(null, o.id)} className="btn-primary">Rechnung erstellen</AktionKnopf>}
+          </div>
+        )}
+      </Abschnitt>
+
       <Abschnitt id="tickets" titel={`Tickets (${o.tickets.length})`}>
         {o.tickets.length ? (
           <table className="table">
@@ -107,14 +160,14 @@ export default async function Bestellung({ params }: { params: Promise<{ id: str
             <tbody>{o.tickets.map((t) => (
               <tr key={t.id}>
                 <td>{sitzName(t.seatId)}</td><td>{KAT_NAME[t.kat]}</td><td>{ART_NAME[t.art] ?? t.art}</td><td className="text-right"><Money cents={t.priceCents} /></td>
-                <td><StatusPill status={t.status} /></td><td className="font-mono">{t.code}</td><td className="whitespace-nowrap">{t.checkedInAt ? fmtDatumZeit(t.checkedInAt) : '–'}</td>
+                <td><StatusPill status={t.status} /></td><td><Link href={`/tickets/${t.id}`} className="relative font-mono underline underline-offset-4">{t.code}<span className="sr-only"> – Ticket öffnen</span></Link></td><td className="whitespace-nowrap">{t.checkedInAt ? fmtDatumZeit(t.checkedInAt) : '–'}</td>
               </tr>
             ))}</tbody>
           </table>
         ) : <Empty>{o.status === 'offen' ? 'Tickets entstehen mit dem Zahlungseingang.' : 'Keine Tickets.'}</Empty>}
       </Abschnitt>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div>
         <Abschnitt id="zahlungen" titel="Zahlungen">
           {o.payments.length || o.redemptions.length ? (
             <table className="table">
@@ -125,14 +178,6 @@ export default async function Bestellung({ params }: { params: Promise<{ id: str
               </tbody>
             </table>
           ) : <Empty>Keine Zahlungen.</Empty>}
-        </Abschnitt>
-        <Abschnitt id="rechnungen" titel="Rechnungen">
-          {o.invoices.length ? (
-            <table className="table">
-              <thead><tr><th scope="col">Nummer</th><th scope="col">Art</th><th scope="col" className="text-right">Betrag</th><th scope="col">Datum</th></tr></thead>
-              <tbody>{o.invoices.map((i) => <tr key={i.id}><td><Link href={`/rechnungen/${i.id}`} className="font-mono underline-offset-4 hover:underline">{i.number}</Link></td><td>{i.kind === 'storno' ? 'Stornorechnung' : 'Rechnung'}</td><td className="text-right"><Money cents={i.grossCents} /></td><td>{fmtDatumZeit(i.issueDate)}</td></tr>)}</tbody>
-            </table>
-          ) : <Empty>Noch keine Rechnung.</Empty>}
         </Abschnitt>
       </div>
 
@@ -163,7 +208,16 @@ export default async function Bestellung({ params }: { params: Promise<{ id: str
         ) : <Empty>Keine E-Mails.</Empty>}
       </Abschnitt>
 
-      <section className="card p-5" aria-label="Notiz"><NotizFormular action={notizSpeichern.bind(null, o.id)} note={o.note} /></section>
+      <section className="card mb-6 p-5" aria-label="Notiz"><NotizFormular action={notizSpeichern.bind(null, o.id)} note={o.note} /></section>
+
+      <Verlauf ziele={[
+        { entity: 'order', ids: [o.id] },
+        { entity: 'ticket', ids: o.tickets.map((t) => t.id) },
+        { entity: 'invoice', ids: o.invoices.map((i) => i.id) },
+        { entity: 'refund', ids: o.refunds.map((r) => r.id) },
+        { entity: 'voucher', ids: o.refunds.map((r) => r.voucherId) },
+        ...(o.customerId ? [{ entity: 'customer', ids: [o.customerId] }] : []),
+      ]} titel="Verlauf" />
     </>
   );
 }

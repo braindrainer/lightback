@@ -2,7 +2,7 @@
 import nodemailer from 'nodemailer';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { audit } from '@/lib/audit';
+import { aenderung, audit, maskieren } from '@/lib/audit';
 import { assertRole } from '@/lib/auth';
 import { db, getSettings } from '@/lib/db';
 import { renderNumber } from '@/lib/invoice-calc';
@@ -23,8 +23,9 @@ export async function firmaSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebn
       email: z.email('Bitte eine gültige E-Mail-Adresse angeben.'), phone: z.string().max(40),
       iban: z.string().max(40).transform((v) => v.replace(/\s+/g, '').toUpperCase()), bic: z.string().max(11).transform((v) => v.toUpperCase()),
     }).parse(Object.fromEntries(['companyName', 'street', 'zip', 'city', 'country', 'fn', 'court', 'uid', 'managingDirector', 'email', 'phone', 'iban', 'bic'].map((k) => [k, txt(fd, k)])));
+    const alt = await getSettings();
     await db.settings.update({ where: { id: 1 }, data: d });
-    await audit(ich, 'einstellungen_firma', 'settings', '1', d);
+    await audit(ich, 'einstellungen_firma', 'settings', '1', undefined, aenderung(alt, d));
     fertig();
     return { ok: 'Firmendaten gespeichert.' };
   } catch (e) { return { fehler: fehlerText(e) }; }
@@ -38,8 +39,9 @@ export async function rechnungenSpeichern(_p: Ergebnis, fd: FormData): Promise<E
       invoiceNumberFmt: z.string().min(3).max(40).regex(/\{N{3,8}\}/, 'Das Format braucht eine laufende Nummer, z. B. {NNNNN}.'),
       orderPrefix: z.string().min(1, 'Bestellpräfix fehlt.').max(10).regex(/^[A-Z0-9]+$/, 'Bestellpräfix: nur Großbuchstaben und Ziffern.'),
     }).parse({ invoicePrefix: txt(fd, 'invoicePrefix'), invoiceNumberFmt: txt(fd, 'invoiceNumberFmt'), orderPrefix: txt(fd, 'orderPrefix').toUpperCase() });
+    const alt = await getSettings();
     await db.settings.update({ where: { id: 1 }, data: d });
-    await audit(ich, 'einstellungen_rechnungen', 'settings', '1', d);
+    await audit(ich, 'einstellungen_rechnungen', 'settings', '1', undefined, aenderung(alt, d));
     fertig();
     return { ok: `Gespeichert. Nächste Rechnungsnummer etwa: ${renderNumber(d.invoiceNumberFmt, d.invoicePrefix, new Date(), 1)}` };
   } catch (e) { return { fehler: fehlerText(e) }; }
@@ -56,8 +58,11 @@ export async function mailSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebni
     }).parse({ smtpHost: txt(fd, 'smtpHost'), smtpPort: txt(fd, 'smtpPort') || '587', smtpUser: txt(fd, 'smtpUser'), mailFrom: txt(fd, 'mailFrom'), mailBcc: txt(fd, 'mailBcc') });
     const pw = String(fd.get('smtpPass') ?? '');
     const loeschen = fd.get('smtpPassLoeschen') === 'on';
+    const alt = await getSettings();
     await db.settings.update({ where: { id: 1 }, data: { ...d, ...(pw ? { smtpPassEnc: encrypt(pw) } : loeschen ? { smtpPassEnc: '' } : {}) } });
-    await audit(ich, 'einstellungen_mail', 'settings', '1', { ...d, passwort: pw ? 'neu' : loeschen ? 'entfernt' : 'unverändert' });
+    const diff = aenderung(alt, d);
+    if (pw || loeschen) { diff.vorher.smtpPasswort = alt.smtpPassEnc ? 'gesetzt' : 'leer'; diff.nachher.smtpPasswort = pw ? 'neu gesetzt' : 'entfernt'; }
+    await audit(ich, 'einstellungen_mail', 'settings', '1', undefined, diff);
     fertig();
     return { ok: 'E-Mail-Einstellungen gespeichert.' };
   } catch (e) { return { fehler: fehlerText(e) }; }
@@ -103,10 +108,11 @@ export async function zahlungSpeichern(_p: Ergebnis, fd: FormData): Promise<Erge
     };
     await db.settings.update({ where: { id: 1 }, data: { paymentConfig: JSON.parse(JSON.stringify(neu)) } });
     const was = (k: string, a?: string, n?: string) => (a === n ? null : n ? (a ? `${k} geändert` : `${k} gesetzt`) : `${k} entfernt`);
+    const oeffentlich = (k: Konfig) => ({ hobexEntityId: k.hobex?.entityId, hobexLive: k.hobex?.live, stripePublishableKey: k.stripe?.publishableKey, paypalClientId: k.paypal?.clientId, paypalLive: k.paypal?.live });
+    const diff = aenderung(oeffentlich(alt), oeffentlich(neu));
     await audit(ich, 'einstellungen_zahlung', 'settings', '1', {
-      hobex: { entityId: neu.hobex?.entityId, live: neu.hobex?.live }, stripe: { publishableKey: neu.stripe?.publishableKey }, paypal: { clientId: neu.paypal?.clientId, live: neu.paypal?.live },
       geheimnisse: [was('hobex-Token', alt.hobex?.tokenEnc, neu.hobex?.tokenEnc), was('Stripe Secret Key', alt.stripe?.secretKeyEnc, neu.stripe?.secretKeyEnc), was('Stripe Webhook', alt.stripe?.webhookSecretEnc, neu.stripe?.webhookSecretEnc), was('PayPal Secret', alt.paypal?.secretEnc, neu.paypal?.secretEnc)].filter(Boolean),
-    });
+    }, { vorher: maskieren(diff.vorher), nachher: maskieren(diff.nachher) });
     fertig();
     return { ok: 'Zahlungsanbieter gespeichert. Geheimnisse sind verschlüsselt abgelegt.' };
   } catch (e) { return { fehler: fehlerText(e) }; }
@@ -115,8 +121,9 @@ export async function zahlungSpeichern(_p: Ergebnis, fd: FormData): Promise<Erge
 export async function demoSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebnis> {
   const ich = await assertRole('admin');
   const demo = fd.get('demoMode') === 'an';
+  const alt = await getSettings();
   await db.settings.update({ where: { id: 1 }, data: { demoMode: demo } });
-  await audit(ich, demo ? 'demo_an' : 'demo_aus', 'settings', '1');
+  await audit(ich, demo ? 'demo_an' : 'demo_aus', 'settings', '1', undefined, { vorher: { demoMode: alt.demoMode }, nachher: { demoMode: demo } });
   fertig();
   return { ok: demo ? 'Demo-Modus ist an: Zahlungen werden simuliert, E-Mails nicht verschickt.' : 'Demo-Modus ist aus: echte Zahlungen und E-Mails.' };
 }

@@ -2,7 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { audit } from '@/lib/audit';
+import { aenderung, audit, protokollMehrere } from '@/lib/audit';
 import { assertRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { wienZuUtc } from '@/lib/dates';
@@ -56,7 +56,7 @@ export async function serieAnlegen(_: Ergebnis, fd: FormData): Promise<Ergebnis>
     const prices = preiseAus(d);
     const serie = await db.showSeries.create({ data: { name: d.name, startDate: new Date(`${d.von}T00:00:00Z`), endDate: new Date(`${d.bis}T00:00:00Z`), weekdays: wochentage, times: zeiten, durationMin: d.dauer, prices } });
     await db.show.createMany({ data: neu.map((startsAt) => ({ seriesId: serie.id, startsAt, durationMin: d.dauer, status: d.status, prices })) });
-    await audit(u, 'serie_anlegen', 'ShowSeries', serie.id, { name: d.name, neu: neu.length, uebersprungen: termine.length - neu.length });
+    await audit(u, 'serie_anlegen', 'showSeries', serie.id, { name: d.name, neu: neu.length, uebersprungen: termine.length - neu.length, termine: neu }, { nachher: { name: d.name, von: d.von, bis: d.bis, wochentage, zeiten, dauer: d.dauer, status: d.status, prices } });
     revalidatePath('/vorstellungen');
     return { ok: true, meldung: `${neu.length} Vorstellungen angelegt${termine.length - neu.length ? `, ${termine.length - neu.length} übersprungen (gab es schon)` : ''}.` };
   });
@@ -72,7 +72,7 @@ export async function vorstellungAnlegen(_: Ergebnis, fd: FormData): Promise<Erg
     if (await db.show.findFirst({ where: { startsAt, status: { not: 'abgesagt' } } })) throw new Error('Zu diesem Zeitpunkt gibt es schon eine Vorstellung');
     const s = await db.show.create({ data: { startsAt, title: d.titel, durationMin: d.dauer, status: d.status, notes: d.notes, prices: preiseAus(d) } });
     id = s.id;
-    await audit(u, 'vorstellung_anlegen', 'Show', s.id, { startsAt });
+    await audit(u, 'vorstellung_anlegen', 'show', s.id, undefined, { nachher: { startsAt, title: s.title, durationMin: s.durationMin, status: s.status, notes: s.notes, prices: s.prices } });
     revalidatePath('/vorstellungen');
   });
   if (id) redirect(`/vorstellungen/${id}`);
@@ -88,7 +88,8 @@ export async function vorstellungBearbeiten(showId: string, _: Ergebnis, fd: For
     const startsAt = wienZuUtc(d.datum, d.zeit);
     if (startsAt.getTime() !== show.startsAt.getTime() && (await db.show.findFirst({ where: { startsAt, id: { not: showId }, status: { not: 'abgesagt' } } }))) throw new Error('Zu diesem Zeitpunkt gibt es schon eine Vorstellung');
     await db.show.update({ where: { id: showId }, data: { startsAt, status: d.status, notes: d.notes, title: d.titel, prices: preiseAus(d) } });
-    await audit(u, 'vorstellung_bearbeiten', 'Show', showId, { vorher: { startsAt: show.startsAt, status: show.status, prices: show.prices }, nachher: { startsAt, status: d.status, prices: preiseAus(d) } });
+    const diff = aenderung(show, { startsAt, status: d.status, notes: d.notes, title: d.titel, prices: preiseAus(d) });
+    if (diff.geaendert) await audit(u, 'vorstellung_bearbeiten', 'show', showId, undefined, diff);
     revalidatePath(`/vorstellungen/${showId}`);
     revalidatePath('/vorstellungen');
     return { ok: true, meldung: 'Gespeichert.' };
@@ -102,7 +103,6 @@ export async function vorstellungAbsagenAktion(showId: string, _: Ergebnis, fd: 
     const show = await db.show.findUniqueOrThrow({ where: { id: showId } });
     if (show.status === 'abgesagt') throw new Error('Die Vorstellung ist bereits abgesagt');
     const r = await vorstellungAbsagen(showId, d.grund, d.methode, u.id);
-    await audit(u, 'vorstellung_absagen', 'Show', showId, { grund: d.grund, methode: d.methode, ...r });
     revalidatePath(`/vorstellungen/${showId}`);
     revalidatePath('/vorstellungen');
     const text = `Vorstellung abgesagt. ${r.ok} Bestellungen storniert${d.methode === 'gutschein' ? ' (Gutscheine ausgestellt)' : ' und erstattet'}.`;
@@ -118,7 +118,6 @@ export async function sitzeSperren(showId: string, ids: string[], grund: string)
     const u = await assertRole('leitung');
     const d = z.object({ ids: sitzIds, grund: z.enum(SPERRGRUENDE) }).parse({ ids, grund });
     await sperren(showId, d.ids, d.grund);
-    await audit(u, 'plaetze_sperren', 'Show', showId, d);
     revalidatePath(`/vorstellungen/${showId}`);
     return { ok: true, meldung: `${d.ids.length} ${d.ids.length === 1 ? 'Platz' : 'Plätze'} gesperrt (${d.grund}).` };
   });
@@ -129,7 +128,6 @@ export async function sitzeEntsperren(showId: string, ids: string[]): Promise<Er
     const u = await assertRole('leitung');
     const d = sitzIds.parse(ids);
     await entsperren(showId, d);
-    await audit(u, 'plaetze_entsperren', 'Show', showId, { ids: d });
     revalidatePath(`/vorstellungen/${showId}`);
     return { ok: true, meldung: `${d.length} ${d.length === 1 ? 'Platz' : 'Plätze'} entsperrt.` };
   });
@@ -143,9 +141,10 @@ export async function sammelStatus(fd: FormData) {
   const zurueck = String(fd.get('zurueck') ?? '/vorstellungen');
   let n = 0;
   if (ids.length) {
-    const r = await db.show.updateMany({ where: { id: { in: ids }, status: { in: ziel === 'pausiert' ? ['verkauf', 'geplant'] : ['pausiert', 'geplant'] } }, data: { status: ziel } });
+    const betroffen = await db.show.findMany({ where: { id: { in: ids }, status: { in: ziel === 'pausiert' ? ['verkauf', 'geplant'] : ['pausiert', 'geplant'] } }, select: { id: true, status: true } });
+    const r = await db.show.updateMany({ where: { id: { in: betroffen.map((s) => s.id) }, status: { in: ziel === 'pausiert' ? ['verkauf', 'geplant'] : ['pausiert', 'geplant'] } }, data: { status: ziel } });
     n = r.count;
-    await audit(u, ziel === 'pausiert' ? 'verkauf_pausieren' : 'verkauf_oeffnen', 'Show', null, { ids, geaendert: n });
+    await protokollMehrere(betroffen.map((s) => ({ user: u, action: ziel === 'pausiert' ? 'verkauf_pausieren' : 'verkauf_oeffnen', entity: 'show', entityId: s.id, data: { sammelaktion: ids.length }, vorher: { status: s.status }, nachher: { status: ziel } })));
   }
   revalidatePath('/vorstellungen');
   const sep = zurueck.includes('?') ? '&' : '?';

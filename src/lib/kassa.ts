@@ -153,7 +153,7 @@ export async function verkaufen(p: { registerId: string; sessionId: string; user
         await bestand(tx, waren, -1);
       },
     });
-    await audit(p.user, p.training ? 'kassa_training' : 'kassa_verkauf', 'receipt', beleg.id, { number: beleg.number, total, payment: p.payment, orderId });
+    await audit(p.user, p.training ? 'kassa_training' : 'kassa_verkauf', 'receipt', beleg.id, { kasse: reg.kassenId, sessionId: p.sessionId, orderId, signaturAusgefallen: beleg.signerFailed || undefined }, { nachher: { number: beleg.number, type: beleg.type, totalCents: beleg.totalCents, payment: beleg.payment, givenCents: beleg.givenCents, changeCents: beleg.changeCents, items: beleg.items, signatur: beleg.signature.slice(-24) } });
     return beleg;
   } catch (e) {
     // Tickets/Gutscheine sind schon ausgestellt – festhalten, damit die Leitung nacharbeiten kann
@@ -215,7 +215,8 @@ export async function stornoBeleg(p: { receiptId: string; grund: string; user: N
       await bestand(tx, waren, 1);
     },
   });
-  await audit(p.user, 'kassa_storno', 'receipt', beleg.id, { storniert: orig.id, number: orig.number, grund: p.grund });
+  await audit(p.user, 'kassa_storno', 'receipt', beleg.id, { storniert: orig.id, originalNummer: orig.number, kasse: orig.register.kassenId, grund: p.grund, orderId: orig.orderId }, { nachher: { number: beleg.number, type: beleg.type, totalCents: beleg.totalCents, payment: beleg.payment, items: beleg.items } });
+  await audit(p.user, 'beleg_storniert', 'receipt', orig.id, { stornobeleg: beleg.number, stornoId: beleg.id, grund: p.grund }, { vorher: { storniert: false }, nachher: { storniert: true } });
   return beleg;
 }
 
@@ -229,7 +230,7 @@ export async function kasseAnlegen(p: { name: string; kassenId: string; user: Nu
 
 export async function sonderbeleg(registerId: string, type: Extract<Belegart, 'start' | 'null' | 'monat' | 'jahr' | 'schluss'>, user: Nutzer) {
   const b = await belegErstellen({ registerId, type, cashier: { id: user.id, name: user.name } });
-  await audit(user, `kassa_${type}beleg`, 'receipt', b.id, { number: b.number });
+  await audit(user, `kassa_${type}beleg`, 'receipt', b.id, { number: b.number, registerId, signaturAusgefallen: b.signerFailed || undefined });
   return b;
 }
 
@@ -238,7 +239,7 @@ export async function schichtOeffnen(registerId: string, floatCents: number, use
     await tx.$queryRaw`SELECT id FROM "Register" WHERE id = ${registerId} FOR UPDATE`;
     if (await tx.cashSession.findFirst({ where: { registerId, closedAt: null } })) throw new Error('An dieser Kasse ist bereits eine Schicht offen.');
     const s = await tx.cashSession.create({ data: { registerId, openedById: user.id, openedByName: user.name, floatCents } });
-    await audit(user, 'schicht_oeffnen', 'cashSession', s.id, { floatCents });
+    await audit(user, 'schicht_oeffnen', 'cashSession', s.id, { registerId }, { nachher: { floatCents, openedAt: s.openedAt } });
     return s;
   });
 }
@@ -248,7 +249,7 @@ export async function schichtSchliessen(sessionId: string, countedCents: number,
   if (s.closedAt) throw new Error('Schicht ist bereits geschlossen.');
   const b = await kassenbericht(sessionId);
   const neu = await db.cashSession.update({ where: { id: sessionId }, data: { closedAt: new Date(), closedByName: user.name, countedCents, expectedCents: b.erwartet, note } });
-  await audit(user, 'schicht_schliessen', 'cashSession', sessionId, { countedCents, expectedCents: b.erwartet, differenz: countedCents - b.erwartet });
+  await audit(user, 'schicht_schliessen', 'cashSession', sessionId, { registerId: s.registerId, umsatzCents: b.umsatz, belege: b.anzahl, differenzCents: countedCents - b.erwartet }, { vorher: { closedAt: null }, nachher: { closedAt: neu.closedAt, countedCents, expectedCents: b.erwartet, note: note || undefined } });
   return neu;
 }
 

@@ -1,6 +1,6 @@
 // Einlasskontrolle: Ticket prüfen und atomar entwerten. Online über den signierten QR-Inhalt,
 // offline in der App über die Codeliste der Vorstellung (die Codes sind nicht erratbar).
-import { audit } from './audit';
+import { audit, protokoll } from './audit';
 import type { Nutzer } from './auth';
 import { db } from './db';
 import { fmtDatumZeit } from './dates';
@@ -29,24 +29,32 @@ export function codeAus(eingabe: string): { code: string; showId?: string } | nu
 
 export async function scannen(p: { eingabe: string; showId: string; user: Nutzer; offline?: boolean; scannedAt?: Date; deviceId?: string }): Promise<ScanAntwort> {
   const c = codeAus(p.eingabe);
-  const protokoll = async (result: Ergebnis, code: string, ticketId?: string) =>
-    db.checkIn.create({ data: { result, code: code.slice(0, 80), ticketId, showId: p.showId, userId: p.user.id, deviceId: p.deviceId, offline: !!p.offline, createdAt: p.scannedAt } });
+  // Jeder Scan landet in CheckIn und knapp im revisionssicheren Protokoll
+  const merken = async (result: Ergebnis, code: string, ticketId?: string) => {
+    const ci = await db.checkIn.create({ data: { result, code: code.slice(0, 80), ticketId, showId: p.showId, userId: p.user.id, deviceId: p.deviceId, offline: !!p.offline, createdAt: p.scannedAt } });
+    await protokoll({
+      user: p.user, action: `einlass_${result}`, entity: ticketId ? 'ticket' : 'checkIn', entityId: ticketId ?? ci.id,
+      data: { code: code.slice(0, 40), showId: p.showId, checkInId: ci.id, geraet: p.deviceId, offline: p.offline || undefined, gescannt: p.scannedAt },
+      ...(result === 'ok' ? { vorher: { status: 'gueltig' }, nachher: { status: 'eingelassen' } } : {}),
+    });
+    return ci;
+  };
   if (!c) {
-    await protokoll('ungueltig', p.eingabe);
+    await merken('ungueltig', p.eingabe);
     return { result: 'ungueltig' };
   }
   const t = await db.ticket.findUnique({ where: { code: c.code }, include: { show: true } });
   if (!t) {
-    await protokoll('unbekannt', c.code);
+    await merken('unbekannt', c.code);
     return { result: 'unbekannt', code: c.code };
   }
   const ticket = { code: t.code, seatId: t.seatId, sitz: sitzName(t.seatId), kat: t.kat, art: t.art };
   if (t.showId !== p.showId) {
-    await protokoll('falsche_vorstellung', t.code, t.id);
+    await merken('falsche_vorstellung', t.code, t.id);
     return { result: 'falsche_vorstellung', code: t.code, ticket, vorstellung: fmtDatumZeit(t.show.startsAt) };
   }
   if (t.status === 'storniert') {
-    await protokoll('storniert', t.code, t.id);
+    await merken('storniert', t.code, t.id);
     return { result: 'storniert', code: t.code, ticket };
   }
   // Atomar: nur ein Gerät gewinnt, auch bei gleichzeitigen Scans
@@ -55,10 +63,10 @@ export async function scannen(p: { eingabe: string; showId: string; user: Nutzer
   if (!n.count) {
     const jetzt = await db.ticket.findUniqueOrThrow({ where: { id: t.id } });
     const r: Ergebnis = jetzt.status === 'storniert' ? 'storniert' : 'doppelt';
-    await protokoll(r, t.code, t.id);
+    await merken(r, t.code, t.id);
     return { result: r, code: t.code, ticket, vorher: jetzt.checkedInAt ? { am: jetzt.checkedInAt.toISOString(), von: jetzt.checkedInBy } : undefined };
   }
-  const ci = await protokoll('ok', t.code, t.id);
+  const ci = await merken('ok', t.code, t.id);
   return { result: 'ok', code: t.code, ticket, checkInId: ci.id };
 }
 
@@ -71,8 +79,19 @@ export async function zuruecknehmen(checkInId: string, user: Nutzer) {
   const n = await db.ticket.updateMany({ where: { id: ci.ticketId, status: 'eingelassen' }, data: { status: 'gueltig', checkedInAt: null, checkedInBy: null } });
   if (!n.count) throw new Error('Ticket ist nicht mehr als eingelassen markiert.');
   await db.checkIn.update({ where: { id: ci.id }, data: { result: 'zurueckgenommen' } });
-  await audit(user, 'einlass_zuruecknehmen', 'ticket', ci.ticketId, { checkInId });
+  await audit(user, 'einlass_zuruecknehmen', 'ticket', ci.ticketId, { checkInId, code: ci.code, eingelassenAm: ci.createdAt }, { vorher: { status: 'eingelassen' }, nachher: { status: 'gueltig' } });
   return true;
+}
+
+/** Leitung: Einlass eines Tickets ohne Zeitlimit zurücknehmen (z. B. versehentlich entwertet) */
+export async function einlassZuruecknehmenLeitung(ticketId: string, grund: string, user: Nutzer) {
+  const t = await db.ticket.findUniqueOrThrow({ where: { id: ticketId } });
+  if (t.status !== 'eingelassen') throw new Error('Das Ticket ist nicht als eingelassen markiert.');
+  const n = await db.ticket.updateMany({ where: { id: ticketId, status: 'eingelassen' }, data: { status: 'gueltig', checkedInAt: null, checkedInBy: null } });
+  if (!n.count) throw new Error('Das Ticket ist nicht mehr als eingelassen markiert.');
+  // Neue Zeile statt die alte zu ändern: der ursprüngliche Scan bleibt sichtbar
+  const ci = await db.checkIn.create({ data: { ticketId, showId: t.showId, code: t.code, result: 'zurueckgenommen', userId: user.id, deviceId: 'backend' } });
+  await audit(user, 'einlass_zuruecknehmen', 'ticket', ticketId, { checkInId: ci.id, code: t.code, grund, durch: 'leitung' }, { vorher: { status: 'eingelassen', checkedInAt: t.checkedInAt, checkedInBy: t.checkedInBy }, nachher: { status: 'gueltig', checkedInAt: null, checkedInBy: null } });
 }
 
 export async function stand(showId: string) {

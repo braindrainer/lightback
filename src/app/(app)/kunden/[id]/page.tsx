@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth';
+import { Verlauf } from '@/components/Verlauf';
 import { db } from '@/lib/db';
 import { fmtDatumZeit } from '@/lib/dates';
 import { Empty, Money, PageHeader, StatusPill } from '@/components/ui';
@@ -53,6 +54,7 @@ export default async function Kunde({ params }: { params: Promise<{ id: string }
           ) : <Empty>Keine Bestellungen.</Empty>}
         </section>
       </div>
+      <Verlauf ziele={[{ entity: 'customer', ids: [c.id, ...alle.map((x) => x.id)] }]} />
     </>
   );
 }

@@ -1,5 +1,6 @@
 // Regelmäßige Aufgaben (alle 5 Minuten über POST /api/cron):
 // Reservierungen aufräumen, Leistungsabgrenzung, Erinnerungsmails, unbezahlte Web-Bestellungen schließen.
+import { protokollMehrere } from './audit';
 import { db } from './db';
 import { fmtDatum, fmtZeit } from './dates';
 import { vorstellungenAbrechnen } from './ledger';
@@ -31,14 +32,17 @@ export async function erinnerungenSenden(jetzt = new Date()) {
 /** Web-Bestellungen, deren Zahlung nie abgeschlossen wurde: schließen und Plätze freigeben */
 export async function unbezahlteSchliessen(jetzt = new Date()) {
   const alt = await db.order.findMany({ where: { status: 'offen', channel: 'web', createdAt: { lt: new Date(jetzt.getTime() - UNBEZAHLT_MIN * 60e3) } }, select: { id: true, holdId: true } });
+  const geschlossen: string[] = [];
   for (const o of alt) {
     await db.$transaction(async (tx) => {
       const n = await tx.order.updateMany({ where: { id: o.id, status: 'offen' }, data: { status: 'storniert', cancelledAt: jetzt, holdId: null, note: `Nicht bezahlt – nach ${UNBEZAHLT_MIN} Min. geschlossen` } });
       if (!n.count) return;
+      geschlossen.push(o.id);
       await tx.payment.updateMany({ where: { orderId: o.id, status: 'offen' }, data: { status: 'fehlgeschlagen' } });
       if (o.holdId) await tx.hold.deleteMany({ where: { id: o.holdId } });
     });
   }
+  await protokollMehrere(geschlossen.map((id) => ({ user: null, akteur: 'System (Cron)', action: 'bestellung_verfallen', entity: 'order', entityId: id, data: { grund: `Nicht bezahlt – nach ${UNBEZAHLT_MIN} Min. geschlossen` }, vorher: { status: 'offen' }, nachher: { status: 'storniert' } })));
   return alt.length;
 }
 

@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { audit } from '@/lib/audit';
+import { aenderung, audit } from '@/lib/audit';
 import { assertRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { ROLLEN } from '@/lib/session';
@@ -33,7 +33,7 @@ export async function benutzerAnlegen(_p: Ergebnis, fd: FormData): Promise<Ergeb
     }).parse({ username: fd.get('username'), name: fd.get('name'), email: fd.get('email'), roles: fd.getAll('roles'), pin: fd.get('pin') ?? '', passwort: fd.get('passwort') ?? '' });
     const pw = e.passwort || neuesPasswort();
     const u = await db.user.create({ data: { username: e.username, name: e.name, email: e.email, roles: e.roles, passwordHash: await bcrypt.hash(pw, 12), pin: e.pin ? await bcrypt.hash(e.pin, 10) : null } });
-    await audit(ich, 'benutzer_angelegt', 'user', u.id, { username: u.username, roles: u.roles, pin: !!e.pin });
+    await audit(ich, 'benutzer_angelegt', 'user', u.id, { passwort: e.passwort ? 'vorgegeben' : 'erzeugt' }, { nachher: { username: u.username, name: u.name, email: u.email, roles: u.roles, active: u.active, pin: e.pin ? 'gesetzt' : 'keine' } });
     revalidatePath('/benutzer');
     return { ok: `${u.name} wurde angelegt.`, geheim: e.passwort ? undefined : { label: `Erstes Passwort für ${u.username}`, wert: pw } };
   } catch (err) {
@@ -51,7 +51,9 @@ export async function benutzerSpeichern(_p: Ergebnis, fd: FormData): Promise<Erg
     const vorher = await db.user.findUniqueOrThrow({ where: { id } });
     const pinLoeschen = fd.get('pinLoeschen') === 'on';
     await db.user.update({ where: { id }, data: { name: e.name, email: e.email, roles: e.roles, active: e.active, ...(e.pin ? { pin: await bcrypt.hash(e.pin, 10) } : pinLoeschen ? { pin: null } : {}) } });
-    await audit(ich, 'benutzer_geaendert', 'user', id, { vorher: { roles: vorher.roles, active: vorher.active, email: vorher.email }, nachher: { roles: e.roles, active: e.active, email: e.email }, pin: e.pin ? 'neu' : pinLoeschen ? 'entfernt' : undefined });
+    const diff = aenderung(vorher, { name: e.name, email: e.email, roles: e.roles, active: e.active });
+    if (e.pin || pinLoeschen) { diff.vorher.pin = vorher.pin ? 'gesetzt' : 'keine'; diff.nachher.pin = e.pin ? 'neu gesetzt' : 'entfernt'; }
+    await audit(ich, vorher.active && !e.active ? 'benutzer_deaktiviert' : 'benutzer_geaendert', 'user', id, { username: vorher.username }, diff);
     revalidatePath('/benutzer');
     return { ok: 'Gespeichert.' };
   } catch (err) {
@@ -66,7 +68,7 @@ export async function passwortZuruecksetzen(_p: Ergebnis, fd: FormData): Promise
   if (!u) return { fehler: 'Benutzer nicht gefunden.' };
   const pw = neuesPasswort();
   await db.user.update({ where: { id }, data: { passwordHash: await bcrypt.hash(pw, 12) } });
-  await audit(ich, 'passwort_zurueckgesetzt', 'user', id, { username: u.username });
+  await audit(ich, 'passwort_zurueckgesetzt', 'user', id, { username: u.username, hinweis: 'neues Passwort erzeugt (nicht protokolliert)' });
   return { ok: 'Neues Passwort erzeugt.', geheim: { label: `Neues Passwort für ${u.username}`, wert: pw, hinweis: 'Wird nur jetzt angezeigt. Das alte Passwort gilt nicht mehr.' } };
 }
 

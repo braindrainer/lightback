@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z, ZodError } from 'zod';
-import { audit } from '@/lib/audit';
+import { aenderung, audit, maskieren } from '@/lib/audit';
 import { assertRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { kasseAnlegen, schichtOeffnen, schichtSchliessen, sonderbeleg, stornoBeleg, verkaufen } from '@/lib/kassa';
@@ -131,7 +131,7 @@ export async function signaturAction(f: FormData) {
     }
     const certSerial = signer === 'demo' ? 'DEMO' : String(f.get('certSerial') ?? '').trim() || reg.certSerial;
     await db.register.update({ where: { id: registerId }, data: { signer, signerConfig: neu as object, certSerial } });
-    await audit(u, 'kasse_signatur', 'register', registerId, { signer, certSerial });
+    await audit(u, 'kasse_signatur', 'register', registerId, undefined, { vorher: maskieren({ signer: reg.signer, certSerial: reg.certSerial, ...alt }), nachher: maskieren({ signer, certSerial, ...neu }) });
   } catch (e) {
     zurueck(EINR, 'fehler', meldung(e));
   }
@@ -158,8 +158,9 @@ export async function produktSpeichernAction(f: FormData) {
     const priceCents = parseAmountToCents(d.preis);
     if (priceCents < 0) throw new Error('Preis kann nicht negativ sein.');
     const data = { name: d.name, category: d.category, priceCents, vatRate: d.vatRate, sku: d.sku || null, stock: d.stock ? Number.parseInt(d.stock, 10) : null, sort: d.sort, color: d.color ?? '', active: d.active === 'on' };
+    const alt = d.id ? await db.product.findUniqueOrThrow({ where: { id: d.id } }) : null;
     const p = d.id ? await db.product.update({ where: { id: d.id }, data }) : await db.product.create({ data });
-    await audit(u, d.id ? 'artikel_aendern' : 'artikel_anlegen', 'product', p.id, data);
+    await audit(u, d.id ? 'artikel_aendern' : 'artikel_anlegen', 'product', p.id, undefined, alt ? aenderung(alt, data) : { nachher: data });
   } catch (e) {
     zurueck(EINR, 'fehler', meldung(e));
   }

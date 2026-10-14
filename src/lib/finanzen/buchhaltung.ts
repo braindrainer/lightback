@@ -1,5 +1,6 @@
 // Vorgänge der Buchhaltung: manuelle Buchung, UVA-Umbuchung, Auszahlungen, Eingangsbelege, Bankabgleich, Festschreibung.
 // Jede Buchung läuft über ledger.buchen (nie direkt ins Journal schreiben).
+import { protokoll } from '../audit';
 import { db, getSettings } from '../db';
 import { bucheAuszahlung, bucheEingangsrechnung, bucheZahlungEingangsrechnung, buchen, stornoBuchung, STEUERCODES, TRANSIT, type Zeile } from '../ledger';
 import { splitGross } from '../money';
@@ -41,8 +42,10 @@ export async function manuellBuchen(b: { datum: Date; text: string; beleg: strin
     if (!k) throw new Error(`Konto ${n} gibt es nicht.`);
     if (!k.active) throw new Error(`Konto ${n} ist deaktiviert.`);
   }
-  const e = await buchen({ date: b.datum, text: b.text, docRef: b.beleg, source: 'manual', createdById: userId, zeilen: manuelleZeilen(b.zeilen) });
+  const zeilen = manuelleZeilen(b.zeilen);
+  const e = await buchen({ date: b.datum, text: b.text, docRef: b.beleg, source: 'manual', createdById: userId, zeilen });
   if (!e) throw new Error('Die Buchung hat keinen Betrag.');
+  await protokoll({ action: 'buchung_manuell', entity: 'journalEntry', entityId: e.id, nachher: { nr: e.number, datum: e.date, text: e.text, beleg: e.docRef, zeilen } });
   return e;
 }
 
@@ -50,7 +53,9 @@ export async function buchungStornieren(entryId: string, datum: Date, userId?: s
   const e = await db.journalEntry.findUniqueOrThrow({ where: { id: entryId } });
   if (e.reversesId) throw new Error('Eine Stornobuchung kann nicht nochmals storniert werden.');
   if (await db.journalEntry.findFirst({ where: { reversesId: entryId } })) throw new Error('Diese Buchung ist bereits storniert.');
-  return stornoBuchung(entryId, datum, userId);
+  const st = await stornoBuchung(entryId, datum, userId);
+  await protokoll({ action: 'buchung_storniert', entity: 'journalEntry', entityId: entryId, data: { nr: e.number, text: e.text, stornoNr: st?.number, stornoId: st?.id, datum }, vorher: { storniert: false }, nachher: { storniert: true, durch: st?.number } });
+  return st;
 }
 
 // ─────────── UVA ───────────
@@ -66,7 +71,9 @@ export async function uvaBuchen(monat: string, userId?: string) {
   const zeilen = uvaUmbuchung(ergebnis);
   if (!zeilen.length) throw new Error('Für diesen Monat gibt es keine Umsatz- oder Vorsteuer.');
   const text = `UVA ${monat}${vorhandene.length ? ` (Fassung ${vorhandene.length + 1})` : ''}`;
-  return buchen({ date: tag(bis)!, text, docRef: `UVA ${monat}`, source: 'uva', sourceId: monat, createdById: userId, zeilen });
+  const e = await buchen({ date: tag(bis)!, text, docRef: `UVA ${monat}`, source: 'uva', sourceId: monat, createdById: userId, zeilen });
+  if (e) await protokoll({ action: 'uva_gebucht', entity: 'journalEntry', entityId: e.id, data: { monat, fassung: vorhandene.length + 1 }, nachher: { nr: e.number, text, zeilen } });
+  return e;
 }
 
 export async function uvaStatus(monat: string) {
@@ -89,6 +96,7 @@ export async function auszahlungErfassen(p: { provider: string; datum: Date; bru
   const n = p.paymentIds.length
     ? (await db.payment.updateMany({ where: { id: { in: p.paymentIds }, provider: { in: provider }, settledAt: null }, data: { settledAt: p.datum, settlementRef: p.ref || id } })).count
     : 0;
+  await protokoll({ action: 'auszahlung_erfasst', entity: 'settlement', entityId: id, data: { provider: p.provider, datum: p.datum, bruttoCents: p.bruttoCents, gebuehrCents: p.gebuehrCents, ref: p.ref, buchungNr: e?.number, zahlungen: p.paymentIds, abgerechnet: n } });
   return { entry: e, abgerechnet: n };
 }
 
@@ -205,4 +213,5 @@ export async function festschreiben(bis: Date) {
   if (s.lockedUntil && bis < s.lockedUntil) throw new Error(`Bereits festgeschrieben bis ${tagStr(s.lockedUntil)} – das Datum kann nicht zurückgesetzt werden.`);
   if (bis > new Date()) throw new Error('Festschreiben geht nur für vergangene Tage.');
   await db.settings.update({ where: { id: 1 }, data: { lockedUntil: bis } });
+  await protokoll({ action: 'festschreiben', entity: 'settings', entityId: '1', vorher: { lockedUntil: s.lockedUntil }, nachher: { lockedUntil: bis } });
 }

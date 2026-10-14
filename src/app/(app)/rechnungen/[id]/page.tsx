@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth';
+import { Verlauf } from '@/components/Verlauf';
 import { db, getSettings } from '@/lib/db';
 import { fmtDatum, fmtDatumZeit } from '@/lib/dates';
 import { rechnungDoc } from '@/lib/finanzen/rechnungen';
@@ -71,6 +72,7 @@ export default async function Rechnung({ params, searchParams }: { params: Promi
             </table>
             {inv.note && <p className="px-5 py-3 text-sm text-muted">{inv.note}</p>}
           </section>
+          <Verlauf ziele={[{ entity: 'invoice', ids: [inv.id] }, { entity: 'invoice', ids: [...stornos.map((x) => x.id), inv.cancelsId] }]} />
           <section className="card relative overflow-hidden" aria-labelledby="h-vorschau">
             <h2 id="h-vorschau" className="h2 px-5 pt-4">Vorschau</h2>
             <iframe title={`Vorschau ${inv.number}`} src={`/rechnungen/${inv.id}/pdf?html=1`} className="mt-3 h-[640px] w-full border-t border-line bg-white" />

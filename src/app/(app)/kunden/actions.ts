@@ -1,7 +1,7 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { audit } from '@/lib/audit';
+import { aenderung, audit } from '@/lib/audit';
 import { assertRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { gleichePerson } from '@/components/verkauf/daten';
@@ -24,7 +24,8 @@ export async function kundeBearbeiten(id: string, _: Ergebnis, fd: FormData): Pr
     await db.customer.update({ where: { id }, data: daten });
     // Newsletter-Wunsch gilt für die Person, nicht nur für einen Datensatz
     if (vorher.email) await db.customer.updateMany({ where: { email: { equals: vorher.email, mode: 'insensitive' } }, data: { newsletter: daten.newsletter } });
-    await audit(u, 'kunde_bearbeiten', 'Customer', id, { vorher, nachher: daten });
+    const diff = aenderung(vorher, daten);
+    if (diff.geaendert) await audit(u, 'kunde_bearbeiten', 'customer', id, undefined, diff);
     revalidatePath(`/kunden/${id}`);
     revalidatePath('/kunden');
     return { ok: true, meldung: 'Gespeichert. Bereits ausgestellte Rechnungen bleiben unverändert.' };
@@ -41,7 +42,8 @@ export async function anonymisieren(id: string, _: Ergebnis, fd: FormData): Prom
       where: { id: c.id },
       data: { firstName: 'Anonymisiert', lastName: '', email: '', phone: null, company: null, vatId: null, street: null, zip: null, city: null, country: null, newsletter: false },
     })));
-    await audit(u, 'kunde_anonymisieren', 'Customer', id, { datensaetze: alle.map((c) => c.id) });
+    // Protokoll hält nur fest, dass und welche Felder geleert wurden – nicht die Daten selbst
+    await audit(u, 'kunde_anonymisieren', 'customer', id, { datensaetze: alle.map((c) => c.id), felder: ['firstName', 'lastName', 'email', 'phone', 'company', 'vatId', 'street', 'zip', 'city', 'country', 'newsletter'] });
     revalidatePath(`/kunden/${id}`);
     revalidatePath('/kunden');
     return { ok: true, meldung: `${alle.length} ${alle.length === 1 ? 'Datensatz' : 'Datensätze'} anonymisiert. Bestellungen und Rechnungen bleiben erhalten (Aufbewahrungspflicht).` };

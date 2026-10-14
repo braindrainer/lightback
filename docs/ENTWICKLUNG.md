@@ -9,7 +9,8 @@ Prisma 6 + PostgreSQL 18, Tailwind v4. Live: https://lightback.skillful.at (Dock
 - Zeiten: gespeichert UTC, angezeigt in Europe/Vienna über `src/lib/dates.ts` (`fmtDatum`, `fmtZeit`, `wienZuUtc`, `wienTag`).
 - Zugriff: Seiten `await requireRole('leitung')`, Server Actions/API `await assertRole(...)` aus `src/lib/auth.ts`.
   Rollen: admin (alles), leitung, buchhaltung, kassa, einlass.
-- Wichtige Aktionen protokollieren: `audit(user, 'aktion', 'entity', id, daten)` aus `src/lib/audit.ts`.
+- Wichtige Aktionen protokollieren: `audit(user, 'aktion', 'entity', id, daten, { vorher, nachher })` bzw. `protokoll({...})` aus `src/lib/audit.ts`
+  (Details siehe „Revisionssicheres Protokoll“). Geänderte Felder mit `aenderung(alt, neu)`, Geheimnisse nie protokollieren (`maskieren`).
 - UI: Klassen aus `src/app/globals.css` (`card`, `btn-primary`, `btn-gold`, `btn-secondary`, `btn-danger`, `input`, `label`, `table`, `pill`, `h1`, `h2`, `tabbar`)
   und Komponenten aus `src/components/ui.tsx` (`PageHeader`, `Money`, `StatusPill`, `Stat`, `Empty`).
 - Barrierefreiheit WCAG 2.2 AA: echte Überschriften, Labels an jedem Feld, Fehlermeldungen mit `role="alert"`,
@@ -30,6 +31,36 @@ Prisma 6 + PostgreSQL 18, Tailwind v4. Live: https://lightback.skillful.at (Dock
 
 ## Datenbank
 - Schema `prisma/schema.prisma`. Änderungen nur additiv; `npx prisma db push` (lokal mit `set -a; . ./.env; set +a`).
+- Danach bzw. bei jedem Containerstart: `npx tsx scripts/schutz.ts` (Schutz-Trigger, siehe unten). Der Container macht das selbst
+  (`docker-entrypoint.sh`: `schutz.ts --spalten` → `prisma db push` → `schutz.ts` → Server).
+
+## Revisionssicheres Protokoll (AuditLog)
+- Jeder Eintrag: Zeit, Benutzer (oder „Webshop“, „Partner …“, „System“), Aktion, Objekt + ID, `data`, `vorher`/`nachher` (nur geänderte Felder),
+  IP und User-Agent der Anfrage, fortlaufende Nummer `seq`, `prevHash` und `hash`.
+- Hash-Kette (`src/lib/audit-kette.ts`): `hash = SHA-256(kanonisches JSON von {createdAt, userId, userName, action, entity, entityId, data,
+  vorher, nachher, ip, userAgent, prevHash})`, Schlüssel sortiert, ohne Leerzeichen; erster Vorgänger = 64 × „0“. Angehängt wird in einer
+  Transaktion unter `pg_advisory_xact_lock(7401002)`.
+- Ohne `user` ermittelt `protokoll()` die angemeldete Person aus der Sitzung; `user: null` + `akteur` für Shop, Partner-API, Zahlungsrückmeldungen, Cron.
+- Protokolliert wird in den Lib-Funktionen (orders, umbuchung, seats, einlass, kassa, finanzen/…), damit Backend, Shop, Partner-API und Kassa
+  gleich erfasst werden: Bestellung angelegt/bezahlt/storniert/umgebucht/verfallen, Tickets (Storno, jeder Einlass-Scan, Rücknahme, Druck),
+  Rechnungen (erstellt, Storno, bezahlt, gesendet), Gutscheine (ausgestellt, verkauft, eingelöst, (de)aktiviert), Sperren, Vorstellungen,
+  Buchhaltung (manuell, Storno, UVA, Auszahlung, Festschreibung), Kassabelege und Schichten, Benutzer/Rollen/Passwörter (ohne Geheimnisse),
+  Einstellungen (Geheimnisse maskiert), Partner-Schlüssel, Login/Logout/Fehlversuche, Exporte.
+- Prüfung: `pruefeKette()` bzw. Seite `/protokoll` → „Integrität prüfen“, auf der Kommandozeile `npx tsx scripts/schutz.ts --pruefen`.
+  Export (CSV/JSON mit Hashes) unter `/protokoll/export`, Tagesanker (letzter Hash je Tag) unter `/protokoll/anker` – regelmäßig extern ablegen.
+- Verlauf je Datensatz: `<Verlauf ziele={[{ entity: 'order', ids: [id] }, …]} />` aus `src/components/Verlauf.tsx`.
+
+### Datenbank-Trigger (`src/lib/schutz.ts`)
+| Tabelle | gesperrt |
+|---|---|
+| AuditLog | UPDATE, DELETE, TRUNCATE; INSERT nur mit gültigem Hash, der an den letzten Eintrag anschließt |
+| JournalEntry | DELETE, TRUNCATE; UPDATE nur zum einmaligen Setzen von `reversesId` (Storno-Verweis) |
+| JournalLine, Receipt | UPDATE, DELETE, TRUNCATE |
+| Ticket, Invoice, Payment, Refund, Order, CheckIn, VoucherRedemption | DELETE, TRUNCATE (Statusänderungen bleiben erlaubt) |
+
+Fehler lauten „Lightback-Schutz: …“. Nie Trigger abschwächen, sondern Aufrufer korrigieren (stornieren statt löschen).
+Grenzen: Wer Superuser-Rechte auf der Datenbank hat, kann Trigger entfernen – das deckt die Hash-Kette zusammen mit den extern
+abgelegten Tagesankern auf. Beim ersten Start werden ältere Einträge ohne Hash einmalig in `seq`-Reihenfolge versiegelt.
 
 ## Prüfen
 - `npx tsc --noEmit`, `npx next build`.

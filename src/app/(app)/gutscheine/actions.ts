@@ -1,7 +1,7 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { audit } from '@/lib/audit';
+import { audit, protokollMehrere } from '@/lib/audit';
 import { assertRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { wienZuUtc } from '@/lib/dates';
@@ -24,7 +24,8 @@ export async function gutscheineAusstellen(_: Ergebnis, fd: FormData): Promise<E
     const validUntil = d.gueltig ?? new Date(Date.now() + 3 * 365 * 864e5);
     const codes = Array.from({ length: d.anzahl }, () => `LOC-${neuerCode(8)}`);
     await db.voucher.createMany({ data: codes.map((code) => ({ code, kind: 'wert', issuer: 'eigen', valueCents: d.wert, remainingCents: d.wert, validUntil, note: d.note })) });
-    await audit(u, 'gutscheine_ausstellen', 'Voucher', null, { anzahl: d.anzahl, wert: d.wert, note: d.note });
+    const neu = await db.voucher.findMany({ where: { code: { in: codes } }, select: { id: true, code: true } });
+    await protokollMehrere(neu.map((v) => ({ user: u, action: 'gutschein_ausgestellt', entity: 'voucher', entityId: v.id, data: { herkunft: 'eigen', anlass: d.note, serie: d.anzahl > 1 ? d.anzahl : undefined }, nachher: { code: v.code, valueCents: d.wert, validUntil, active: true } })));
     revalidatePath('/gutscheine');
     return { ok: true, meldung: `${d.anzahl} ${d.anzahl === 1 ? 'Gutschein' : 'Gutscheine'} über je ${formatEur(d.wert)} ausgestellt.`, daten: { codes } };
   });
@@ -36,7 +37,6 @@ export async function gutscheinVerkaufenAktion(_: Ergebnis, fd: FormData): Promi
     const u = await assertRole(...ROLLEN);
     const d = z.object({ wert, provider: z.enum(['bar', 'terminal']), note: z.string().trim().max(300).default('') }).parse(obj(fd));
     const v = await gutscheinVerkaufen({ cents: d.wert, provider: d.provider, note: d.note });
-    await audit(u, 'gutschein_verkaufen', 'Voucher', v.id, { wert: d.wert, provider: d.provider });
     revalidatePath('/gutscheine');
     return { ok: true, meldung: `Gutschein über ${formatEur(d.wert)} verkauft und gebucht.`, daten: { codes: [v.code] } };
   });
@@ -69,7 +69,9 @@ export async function partnerImport(_: Ergebnis, fd: FormData): Promise<Ergebnis
       data: [...zeilen].map(([code, cents]) => ({ code, kind: 'partner', issuer: d.issuer, valueCents: cents, remainingCents: cents, validUntil: d.gueltig, note: `Import ${d.issuer}` })),
       skipDuplicates: true,
     });
-    await audit(u, 'partnergutscheine_import', 'Voucher', null, { issuer: d.issuer, neu: r.count, doppelt: zeilen.size - r.count });
+    const neu = await db.voucher.findMany({ where: { code: { in: [...zeilen.keys()] }, issuer: d.issuer, kind: 'partner', createdAt: { gte: new Date(Date.now() - 10 * 60e3) }, redemptions: { none: {} } }, select: { id: true, code: true, valueCents: true } });
+    await audit(u, 'partnergutscheine_import', 'voucher', null, { issuer: d.issuer, neu: r.count, doppelt: zeilen.size - r.count });
+    await protokollMehrere(neu.map((v) => ({ user: u, action: 'gutschein_importiert', entity: 'voucher', entityId: v.id, data: { herkunft: 'partner', issuer: d.issuer }, nachher: { code: v.code, valueCents: v.valueCents, validUntil: d.gueltig, active: true } })));
     revalidatePath('/gutscheine');
     return { ok: true, meldung: `${r.count} Codes von ${d.issuer} importiert${zeilen.size - r.count ? `, ${zeilen.size - r.count} gab es schon` : ''}.` };
   });
@@ -78,8 +80,9 @@ export async function partnerImport(_: Ergebnis, fd: FormData): Promise<Ergebnis
 export async function gutscheinAktivSetzen(id: string, aktiv: boolean, _: Ergebnis): Promise<Ergebnis> {
   return ausfuehren(async () => {
     const u = await assertRole(...ROLLEN);
+    const alt = await db.voucher.findUniqueOrThrow({ where: { id }, select: { active: true, code: true } });
     await db.voucher.update({ where: { id }, data: { active: aktiv } });
-    await audit(u, aktiv ? 'gutschein_aktivieren' : 'gutschein_deaktivieren', 'Voucher', id);
+    await audit(u, aktiv ? 'gutschein_aktivieren' : 'gutschein_deaktivieren', 'voucher', id, { code: alt.code }, { vorher: { active: alt.active }, nachher: { active: aktiv } });
     revalidatePath(`/gutscheine/${id}`);
     revalidatePath('/gutscheine');
     return { ok: true, meldung: aktiv ? 'Gutschein ist wieder aktiv.' : 'Gutschein deaktiviert.' };

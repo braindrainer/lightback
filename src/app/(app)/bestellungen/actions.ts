@@ -2,11 +2,12 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
-import { audit } from '@/lib/audit';
+import { aenderung, audit, protokoll } from '@/lib/audit';
+import { rechnungSenden } from '@/lib/finanzen/rechnungen';
 import { assertRole, hat } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { formatEur, parseAmountToCents } from '@/lib/money';
-import { bestellungAnlegen, bezahlt, gutscheinPruefen, stornieren, stornoMoeglich, ticketMail } from '@/lib/orders';
+import { bestellungAnlegen, bezahlt, gutscheinPruefen, rechnungFuerBestellung, stornieren, stornoMoeglich, ticketMail } from '@/lib/orders';
 import { sitzName, SITZ } from '@/lib/saal';
 import { freigeben, haltenBis, MAX_TICKETS, PlatzBelegt, reservieren } from '@/lib/seats';
 import { umbuchen } from '@/lib/umbuchung';
@@ -72,7 +73,7 @@ export async function telefonVerkauf(eingabe: VerkaufEingabe): Promise<Ergebnis>
     if (zahl === 0) await bezahlt(order.id, { provider: order.voucherCents ? 'gutschein' : 'bar', providerRef: order.voucherCode ?? `tel-${order.number}`, amountCents: 0 });
     else if (d.zahlart === 'bar' || d.zahlart === 'terminal') await bezahlt(order.id, { provider: d.zahlart, providerRef: `tel-${order.number}`, amountCents: zahl });
     else await haltenBis(hold.id, show.startsAt);
-    await audit(u, 'telefonverkauf', 'Order', order.id, { number: order.number, zahlart: d.zahlart, plaetze: d.seats.length, summe: order.totalCents });
+    await audit(u, 'telefonverkauf', 'order', order.id, { number: order.number, zahlart: d.zahlart, plaetze: d.seats.length, summe: order.totalCents });
     revalidatePath('/bestellungen');
     revalidatePath(`/vorstellungen/${d.showId}`);
     fertig = order.id;
@@ -102,7 +103,7 @@ export async function ticketsSenden(orderId: string, _: Ergebnis): Promise<Ergeb
     const r = await ticketMail(orderId);
     if (!r) throw new Error('Keine E-Mail-Adresse hinterlegt');
     if (!r.ok) throw new Error(`Versand fehlgeschlagen: ${'fehler' in r ? r.fehler : ''}`);
-    await audit(u, 'tickets_senden', 'Order', orderId);
+    await audit(u, 'tickets_senden', 'order', orderId, { mailId: r.id });
     neuLaden(orderId);
     return { ok: true, meldung: 'demo' in r && r.demo ? 'Tickets erstellt (Demo-Modus: E-Mail nur protokolliert).' : 'Tickets wurden erneut gesendet.' };
   });
@@ -127,7 +128,6 @@ export async function stornoAktion(orderId: string, _: Ergebnis, fd: FormData): 
     if (!fristIgnorieren && !stornoMoeglich(o.show.startsAt)) throw new Error('Die 24-Stunden-Frist ist vorbei. Zum Übergehen bitte das Kästchen „Frist übergehen“ setzen.');
     const r = await stornieren({ orderId, ticketIds, methode: d.methode, grund: d.grund, gebuehrCents: d.gebuehr, notiz: d.notiz, userId: u.id, fristIgnorieren });
     const v = r.voucherId ? await db.voucher.findUnique({ where: { id: r.voucherId } }) : null;
-    await audit(u, 'storno', 'Order', orderId, { refundId: r.refund.id, tickets: r.refund.ticketIds.length, methode: d.methode, betrag: r.refund.amountCents, gebuehr: d.gebuehr, fristIgnorieren });
     neuLaden(orderId);
     revalidatePath(`/vorstellungen/${o.showId}`);
     return { ok: true, meldung: `Storniert: ${r.refund.ticketIds.length} Ticket(s), ${formatEur(r.refund.amountCents)}.${v ? ` Gutschein ${v.code} über ${formatEur(v.valueCents)}.` : ''}`, daten: v ? { gutschein: v.code } : undefined };
@@ -152,7 +152,6 @@ export async function umbuchungAktion(orderId: string, eingabe: UmbuchungEingabe
     if (!d.frist && !stornoMoeglich(alt.show.startsAt)) throw new Error('Die 24-Stunden-Frist ist vorbei. Zum Übergehen bitte das Kästchen „Frist übergehen“ setzen.');
     try {
       const r = await umbuchen({ orderId, ticketIds: d.ticketIds?.length ? d.ticketIds : undefined, showId: d.showId, seats: d.seats, nachzahlung: d.nachzahlung, userId: u.id, fristIgnorieren: d.frist });
-      await audit(u, 'umbuchung', 'Order', orderId, { neu: r.neu.number, gutschein: r.voucherCode, nachzahlung: r.nachzahlung });
       neuLaden(orderId);
       revalidatePath(`/vorstellungen/${alt.showId}`);
       revalidatePath(`/vorstellungen/${d.showId}`);
@@ -175,7 +174,7 @@ export async function zahlungErhalten(orderId: string, _: Ergebnis, fd: FormData
     if (o.status !== 'offen') throw new Error('Die Bestellung ist nicht offen');
     const r = await bezahlt(orderId, { provider: d.provider, providerRef: d.referenz || `manuell-${o.number}`, amountCents: o.totalCents - o.voucherCents });
     if (!r) throw new Error('Die Zahlung war bereits verbucht');
-    await audit(u, 'zahlung_erhalten', 'Order', orderId, d);
+    await audit(u, 'zahlung_erhalten', 'order', orderId, { ...d, betragCents: o.totalCents - o.voucherCents }, { vorher: { status: 'offen' }, nachher: { status: 'bezahlt' } });
     neuLaden(orderId);
     return { ok: true, meldung: 'Zahlung verbucht, Tickets und Rechnung sind erstellt.' };
   });
@@ -190,7 +189,7 @@ export async function reservierungAufheben(orderId: string, _: Ergebnis): Promis
       ...(o.holdId ? [db.hold.deleteMany({ where: { id: o.holdId } })] : []),
       db.order.update({ where: { id: orderId }, data: { status: 'storniert', cancelledAt: new Date(), holdId: null } }),
     ]);
-    await audit(u, 'bestellung_verwerfen', 'Order', orderId);
+    await audit(u, 'bestellung_verwerfen', 'order', orderId, { holdId: o.holdId }, { vorher: { status: o.status }, nachher: { status: 'storniert' } });
     neuLaden(orderId);
     revalidatePath(`/vorstellungen/${o.showId}`);
     return { ok: true, meldung: 'Bestellung verworfen, Plätze sind wieder frei.' };
@@ -209,7 +208,9 @@ export async function kundeSpeichern(orderId: string, _: Ergebnis, fd: FormData)
       const c = await db.customer.create({ data: daten });
       await db.order.update({ where: { id: orderId }, data: { customerId: c.id } });
     }
-    await audit(u, 'kunde_bearbeiten', 'Order', orderId, { vorher: o.customer, nachher: daten });
+    const diff = aenderung(o.customer, daten);
+    await audit(u, o.customer ? 'kunde_bearbeiten' : 'kunde_angelegt', 'order', orderId, { customerId: o.customer?.id, bestellung: o.number }, { vorher: diff.vorher, nachher: diff.nachher });
+    if (o.customer) await audit(u, 'kunde_bearbeiten', 'customer', o.customer.id, { ueber: 'bestellung', bestellung: o.number, orderId }, { vorher: diff.vorher, nachher: diff.nachher });
     neuLaden(orderId);
     return { ok: true, meldung: 'Kundendaten gespeichert. Bereits ausgestellte Rechnungen bleiben unverändert.' };
   });
@@ -219,9 +220,40 @@ export async function notizSpeichern(orderId: string, _: Ergebnis, fd: FormData)
   return ausfuehren(async () => {
     const u = await assertRole('leitung');
     const note = z.string().max(4000).parse(String(fd.get('note') ?? ''));
+    const alt = await db.order.findUniqueOrThrow({ where: { id: orderId }, select: { note: true } });
     await db.order.update({ where: { id: orderId }, data: { note } });
-    await audit(u, 'notiz', 'Order', orderId, { note });
+    await audit(u, 'notiz', 'order', orderId, undefined, { vorher: { note: alt.note }, nachher: { note } });
     neuLaden(orderId);
     return { ok: true, meldung: 'Notiz gespeichert.' };
+  });
+}
+
+// ───────── Rechnung zur Bestellung ─────────
+
+export async function rechnungSendenAktion(orderId: string, invoiceId: string, _: Ergebnis, fd: FormData): Promise<Ergebnis> {
+  return ausfuehren(async () => {
+    await assertRole('leitung', 'buchhaltung');
+    const an = z.email('Bitte eine gültige E-Mail-Adresse angeben').parse(String(fd.get('an') ?? '').trim());
+    const inv = await db.invoice.findUniqueOrThrow({ where: { id: invoiceId } });
+    if (inv.orderId !== orderId) throw new Error('Die Rechnung gehört nicht zu dieser Bestellung');
+    const r = await rechnungSenden(invoiceId, an);
+    neuLaden(orderId);
+    if (!r.ok) throw new Error(`Versand fehlgeschlagen: ${'fehler' in r ? r.fehler : ''}`);
+    return { ok: true, meldung: 'demo' in r && r.demo ? 'Im Demo-Modus nicht verschickt – die Mail steht im E-Mail-Protokoll.' : `Rechnung ${inv.number} an ${an} gesendet.` };
+  });
+}
+
+/** Für ältere bezahlte Bestellungen ohne Rechnung */
+export async function rechnungErstellenAktion(orderId: string, _: Ergebnis): Promise<Ergebnis> {
+  return ausfuehren(async () => {
+    await assertRole('leitung', 'buchhaltung');
+    const o = await db.order.findUniqueOrThrow({ where: { id: orderId }, include: { invoices: true } });
+    if (!['bezahlt', 'teilstorniert'].includes(o.status)) throw new Error('Rechnungen gibt es nur für bezahlte Bestellungen');
+    if (o.invoices.some((i) => i.kind === 'rechnung')) throw new Error('Für diese Bestellung gibt es bereits eine Rechnung');
+    const inv = await db.$transaction((tx) => rechnungFuerBestellung(tx, orderId), { maxWait: 10_000, timeout: 20_000 });
+    if (!inv) throw new Error('Für diese Bestellung gibt es bereits eine Rechnung');
+    await protokoll({ action: 'rechnung_erstellt', entity: 'invoice', entityId: inv.id, data: { bestellung: o.number, orderId, nachtraeglich: true }, nachher: { number: inv.number, kind: inv.kind, netCents: inv.netCents, vatCents: inv.vatCents, grossCents: inv.grossCents } });
+    neuLaden(orderId);
+    return { ok: true, meldung: `Rechnung ${inv.number} erstellt.` };
   });
 }

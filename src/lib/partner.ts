@@ -1,4 +1,5 @@
 // Vertriebspartner-API: Anmeldung per API-Schlüssel, Kontingent, Bestellung auf Rechnung, Storno, Webhooks.
+import { protokoll } from './audit';
 import { createHmac } from 'node:crypto';
 import { Prisma, type Partner } from '@prisma/client';
 import { db } from './db';
@@ -93,6 +94,7 @@ export async function partnerBestellen(p: Partner, e: { holdToken: string; partn
   const provision = Math.round((o.totalCents * p.commissionPct) / 100);
   if (!(await bezahlt(o.id, { provider: 'partner', providerRef: e.partnerRef, amountCents: o.totalCents, commissionCents: provision }))) {
     await db.order.update({ where: { id: o.id }, data: { status: 'storniert', cancelledAt: new Date(), partnerRef: null, note: `Plätze vergeben – Partner-Ref. ${e.partnerRef} nicht ausgeführt` } });
+    await protokoll({ user: null, akteur: `Partner ${p.name}`, action: 'bestellung_verfallen', entity: 'order', entityId: o.id, data: { grund: 'Plätze inzwischen vergeben', partnerRef: e.partnerRef }, vorher: { status: 'offen', partnerRef: e.partnerRef }, nachher: { status: 'storniert', partnerRef: null } });
     throw new ApiFehler(409, 'plaetze_vergeben', 'Die Plätze waren nicht mehr frei – bitte neu reservieren');
   }
   return { neu: true, order: partnerJson((await bestellungLaden({ id: o.id }))!) };
@@ -112,7 +114,7 @@ export async function partnerStornieren(p: Partner, partnerRef: string, ticketCo
     if (unbekannt.length) throw new ApiFehler(400, 'unbekanntes_ticket', `Unbekannte Ticketcodes: ${unbekannt.join(', ')}`);
     ticketIds = o.tickets.filter((t) => ticketCodes.includes(t.code)).map((t) => t.id);
   }
-  await stornieren({ orderId: o.id, ticketIds, methode: 'zahlungsmittel', grund: 'partner', notiz: `Storno über Partner-API (${p.name})`, mail: false });
+  await stornieren({ orderId: o.id, ticketIds, methode: 'zahlungsmittel', grund: 'partner', notiz: `Storno über Partner-API (${p.name})`, mail: false, akteur: `Partner ${p.name}` });
   return partnerJson((await bestellungLaden({ id: o.id }))!);
 }
 
@@ -164,7 +166,7 @@ export async function webhookSenden(p: Pick<Partner, 'id' | 'name' | 'webhookUrl
     }
     if (versuch < 3) await new Promise((res) => setTimeout(res, versuch * 2000));
   }
-  await db.auditLog.create({ data: { action: letzte.ok ? 'webhook_ok' : 'webhook_fehler', entity: 'partner', entityId: p.id, data: { event, url: p.webhookUrl, status: letzte.status, fehler: letzte.fehler || undefined } } }).catch(() => {});
+  await protokoll({ user: null, akteur: 'System (Webhook)', action: letzte.ok ? 'webhook_ok' : 'webhook_fehler', entity: 'partner', entityId: p.id, data: { event, url: p.webhookUrl, status: letzte.status, fehler: letzte.fehler || undefined } });
   if (!letzte.ok) console.error(`Webhook ${event} an ${p.name} fehlgeschlagen: ${letzte.fehler}`);
   return letzte;
 }

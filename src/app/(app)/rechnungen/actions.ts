@@ -3,7 +3,6 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { assertRole } from '@/lib/auth';
-import { audit } from '@/lib/audit';
 import { wienZuUtc } from '@/lib/dates';
 import { ausfuehren, pruefen, type Ergebnis } from '@/lib/finanzen/aktion';
 import { rechnungAnlegen, rechnungBezahlt, rechnungSenden, rechnungStornieren } from '@/lib/finanzen/rechnungen';
@@ -55,7 +54,6 @@ export async function rechnungNeuAktion(_: Ergebnis, fd: FormData): Promise<Erge
       recipient: { company: k.company, name: k.name, street: k.street, zip: k.zip, city: k.city, country: k.country, vatId: k.vatId, email: k.email },
       items: pos, issueDate: wienZuUtc(k.issueDate, '12:00'), serviceDate: wienZuUtc(k.serviceDate, '12:00'), dueDate: k.dueDate ? wienZuUtc(k.dueDate, '12:00') : null, note: k.note,
     }, u.id);
-    await audit(u, 'rechnung.anlegen', 'invoice', inv.id, { number: inv.number, brutto: inv.grossCents });
     id = inv.id;
   });
   if (id) { revalidatePath('/rechnungen'); redirect(`/rechnungen/${id}?neu=1`); }
@@ -68,7 +66,6 @@ export async function zahlungErhaltenAktion(id: string, _: Ergebnis, fd: FormDat
     const u = await assertRole('buchhaltung');
     const d = pruefen(z.object({ datum: datum('Datum fehlt'), konto: z.enum(['2800', '2700']) }), fd);
     await rechnungBezahlt(id, tag(d.datum)!, u.id, d.konto);
-    await audit(u, 'rechnung.bezahlt', 'invoice', id, d);
     fertig = true;
   });
   if (fertig) { revalidatePath('/rechnungen'); redirect(`/rechnungen/${id}?bezahlt=1`); }
@@ -80,7 +77,6 @@ export async function stornoAktion(id: string, _: Ergebnis): Promise<Ergebnis> {
   const r = await ausfuehren(async () => {
     const u = await assertRole('buchhaltung');
     const st = await rechnungStornieren(id, u.id);
-    await audit(u, 'rechnung.storno', 'invoice', id, { storno: st.number });
     neu = st.id;
   });
   if (neu) { revalidatePath('/rechnungen'); redirect(`/rechnungen/${neu}`); }
@@ -92,7 +88,6 @@ export async function sendenAktion(id: string, _: Ergebnis, fd: FormData): Promi
     const u = await assertRole('buchhaltung');
     const d = pruefen(z.object({ an: z.email('Bitte eine gültige E-Mail-Adresse angeben.') }), fd);
     const r = await rechnungSenden(id, d.an);
-    await audit(u, 'rechnung.senden', 'invoice', id, { an: d.an, demo: 'demo' in r });
     revalidatePath(`/rechnungen/${id}`);
     if (!r.ok) throw new Error(`Versand fehlgeschlagen: ${'fehler' in r ? r.fehler : ''}`);
     return 'demo' in r && r.demo ? 'Im Demo-Modus nicht verschickt – die Mail steht im E-Mail-Protokoll.' : `Rechnung an ${d.an} verschickt.`;

@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { audit } from '@/lib/audit';
 import { partnerBestellen, partnerRoute } from '@/lib/partner';
 import { json, koerper } from '@/lib/schnittstelle';
 
@@ -15,6 +14,5 @@ const schema = z.object({
 export const POST = partnerRoute(async (req, p) => {
   const e = await koerper(req, schema);
   const r = await partnerBestellen(p, e);
-  if (r.neu) await audit(null, 'partner_bestellung', 'order', r.order.id, { partner: p.name, partnerRef: e.partnerRef, totalCents: r.order.totalCents });
   return json(r.order, r.neu ? 201 : 200);
 });

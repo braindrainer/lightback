@@ -1,7 +1,7 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { audit } from '@/lib/audit';
+import { aenderung, audit } from '@/lib/audit';
 import { assertRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { neuerSchluessel, neuesWebhookGeheimnis } from '@/lib/apikey';
@@ -31,7 +31,7 @@ export async function partnerAnlegen(_p: Ergebnis, fd: FormData): Promise<Ergebn
     const d = lesen(fd);
     const k = neuerSchluessel();
     const p = await db.partner.create({ data: { ...d, apiKeyHash: k.hash, apiKeyPrefix: k.prefix, webhookSecret: neuesWebhookGeheimnis() } });
-    await audit(ich, 'partner_angelegt', 'partner', p.id, { ...d, apiKeyPrefix: k.prefix });
+    await audit(ich, 'partner_angelegt', 'partner', p.id, undefined, { nachher: { ...d, schluesselPraefix: k.prefix } });
     revalidatePath('/partner');
     return { ok: `${p.name} wurde angelegt.`, geheim: { label: `API-Schlüssel für ${p.name}`, wert: k.key, hinweis: KEY_HINWEIS } };
   } catch (e) { return { fehler: fehlerText(e) }; }
@@ -44,7 +44,7 @@ export async function partnerSpeichern(_p: Ergebnis, fd: FormData): Promise<Erge
     const d = { ...lesen(fd), active: fd.get('active') === 'on' };
     const vorher = await db.partner.findUniqueOrThrow({ where: { id } });
     await db.partner.update({ where: { id }, data: d });
-    await audit(ich, vorher.active && !d.active ? 'partner_deaktiviert' : 'partner_geaendert', 'partner', id, d);
+    await audit(ich, vorher.active && !d.active ? 'partner_deaktiviert' : 'partner_geaendert', 'partner', id, { name: vorher.name }, aenderung(vorher, d));
     revalidatePath('/partner');
     return { ok: d.active ? 'Gespeichert.' : 'Gespeichert. Der Zugang ist deaktiviert – API-Anfragen werden abgelehnt.' };
   } catch (e) { return { fehler: fehlerText(e) }; }
@@ -54,8 +54,9 @@ export async function schluesselNeu(_p: Ergebnis, fd: FormData): Promise<Ergebni
   const ich = await assertRole('leitung');
   const id = String(fd.get('id'));
   const k = neuerSchluessel();
+  const alt = await db.partner.findUniqueOrThrow({ where: { id }, select: { apiKeyPrefix: true } });
   const p = await db.partner.update({ where: { id }, data: { apiKeyHash: k.hash, apiKeyPrefix: k.prefix } });
-  await audit(ich, 'partner_schluessel_neu', 'partner', id, { apiKeyPrefix: k.prefix });
+  await audit(ich, 'partner_schluessel_neu', 'partner', id, { name: p.name }, { vorher: { schluesselPraefix: alt.apiKeyPrefix }, nachher: { schluesselPraefix: k.prefix } });
   revalidatePath(`/partner/${id}`);
   return { ok: 'Neuer Schlüssel erzeugt. Der alte gilt ab sofort nicht mehr.', geheim: { label: `Neuer API-Schlüssel für ${p.name}`, wert: k.key, hinweis: KEY_HINWEIS } };
 }
@@ -65,7 +66,7 @@ export async function webhookGeheimnisNeu(_p: Ergebnis, fd: FormData): Promise<E
   const id = String(fd.get('id'));
   const s = neuesWebhookGeheimnis();
   await db.partner.update({ where: { id }, data: { webhookSecret: s } });
-  await audit(ich, 'partner_webhook_geheimnis_neu', 'partner', id);
+  await audit(ich, 'partner_webhook_geheimnis_neu', 'partner', id, { hinweis: 'Geheimnis erneuert (nicht protokolliert)' });
   revalidatePath(`/partner/${id}`);
   return { ok: 'Neues Webhook-Geheimnis erzeugt.', geheim: { label: 'Webhook-Geheimnis', wert: s, hinweis: 'Der Partner prüft damit die Signatur X-LoC-Signature.' } };
 }

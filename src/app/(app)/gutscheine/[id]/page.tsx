@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth';
+import { Verlauf } from '@/components/Verlauf';
 import { db } from '@/lib/db';
 import { fmtDatum, fmtDatumZeit } from '@/lib/dates';
 import { Empty, Money, PageHeader, StatusPill } from '@/components/ui';
@@ -53,6 +54,7 @@ export default async function Gutschein({ params }: { params: Promise<{ id: stri
           ) : <Empty>Noch nicht eingelöst.</Empty>}
         </section>
       </div>
+      <Verlauf ziele={[{ entity: 'voucher', ids: [v.id] }]} />
     </>
   );
 }

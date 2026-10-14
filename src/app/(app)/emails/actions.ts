@@ -1,6 +1,6 @@
 'use server';
 import { revalidatePath } from 'next/cache';
-import { audit } from '@/lib/audit';
+import { aenderung, audit } from '@/lib/audit';
 import { assertRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { fuellen, fussText, layout, senden, STANDARD_VORLAGEN } from '@/lib/mail';
@@ -31,8 +31,9 @@ export async function vorlageSpeichern(key: string, subject: string, body: strin
   const ich = await assertRole('leitung');
   const f = pruefen(key, subject, body);
   if (f) return { fehler: f };
+  const alt = await db.emailTemplate.findUnique({ where: { key } });
   await db.emailTemplate.upsert({ where: { key }, update: { subject, body }, create: { key, subject, body } });
-  await audit(ich, 'vorlage_gespeichert', 'emailTemplate', key, { subject });
+  await audit(ich, 'vorlage_gespeichert', 'emailTemplate', key, undefined, aenderung(alt ?? { subject: STANDARD_VORLAGEN[key].subject, body: STANDARD_VORLAGEN[key].body }, { subject, body }));
   revalidatePath('/emails/vorlagen');
   return { ok: 'Vorlage gespeichert. Neue Mails verwenden sie ab sofort.' };
 }

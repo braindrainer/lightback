@@ -34,7 +34,6 @@ export async function buchenAktion(_: Ergebnis, fd: FormData): Promise<Ergebnis>
     const haben = r.data.reduce((s, x) => s + x.haben, 0);
     if (soll !== haben) throw new Error(`Die Buchung ist nicht ausgeglichen: Soll ${formatEur(soll)}, Haben ${formatEur(haben)}.`);
     const e = await manuellBuchen({ datum: tag(k.datum)!, text: k.text, beleg: k.beleg, zeilen: r.data }, u.id);
-    await audit(u, 'buchung.manuell', 'journal', e.id, { nr: e.number, text: k.text, betrag: soll });
     neu();
     return `Buchung Nr. ${e.number} gespeichert.`;
   });
@@ -45,7 +44,6 @@ export async function stornoBuchungAktion(entryId: string, _: Ergebnis, fd: Form
     const u = await assertRole('buchhaltung');
     const d = pruefen(z.object({ datum }), fd);
     const e = await buchungStornieren(entryId, tag(d.datum)!, u.id);
-    await audit(u, 'buchung.storno', 'journal', entryId, { storno: e?.id });
     neu();
     return `Storniert mit Buchung Nr. ${e?.number}.`;
   });
@@ -62,7 +60,7 @@ export async function kontoAnlegenAktion(_: Ergebnis, fd: FormData): Promise<Erg
     }), fd);
     if (await db.account.findUnique({ where: { number: d.number } })) throw new Error(`Konto ${d.number} gibt es schon.`);
     const k = await db.account.create({ data: { number: d.number, name: d.name, type: d.type, vatCode: d.vatCode } });
-    await audit(u, 'konto.anlegen', 'account', k.id, d);
+    await audit(u, 'konto.anlegen', 'account', k.id, undefined, { nachher: d });
     neu();
     return `Konto ${d.number} angelegt.`;
   });
@@ -74,7 +72,7 @@ export async function kontoAktivAktion(id: string, aktiv: boolean, _: Ergebnis):
     const k = await db.account.findUniqueOrThrow({ where: { id } });
     if (k.system) throw new Error('Systemkonten werden von Automatikbuchungen verwendet und bleiben aktiv.');
     await db.account.update({ where: { id }, data: { active: aktiv } });
-    await audit(u, aktiv ? 'konto.aktivieren' : 'konto.deaktivieren', 'account', id, { number: k.number });
+    await audit(u, aktiv ? 'konto.aktivieren' : 'konto.deaktivieren', 'account', id, { number: k.number }, { vorher: { active: k.active }, nachher: { active: aktiv } });
     neu();
     return aktiv ? 'Konto aktiviert.' : 'Konto deaktiviert.';
   });
@@ -85,7 +83,6 @@ export async function uvaBuchenAktion(monat: string, _: Ergebnis): Promise<Ergeb
     const u = await assertRole('buchhaltung');
     if (!/^\d{4}-\d{2}$/.test(monat)) throw new Error('Monat ungültig');
     const e = await uvaBuchen(monat, u.id);
-    await audit(u, 'uva.buchen', 'journal', e?.id, { monat });
     neu();
     return `UVA ${monat} gebucht (Buchung Nr. ${e?.number}).`;
   });
@@ -150,7 +147,6 @@ export async function festschreibenAktion(_: Ergebnis, fd: FormData): Promise<Er
     const u = await assertRole('admin');
     const d = pruefen(z.object({ bis: datum }), fd);
     await festschreiben(tag(d.bis)!);
-    await audit(u, 'buchhaltung.festschreiben', 'settings', '1', d);
     neu();
     return `Buchungen bis ${fmtTagStr(d.bis)} festgeschrieben.`;
   });

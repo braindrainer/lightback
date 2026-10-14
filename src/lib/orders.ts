@@ -1,6 +1,7 @@
 // Bestellablauf: Reservierung → Bestellung → Zahlung → Tickets, Rechnung, Buchung, E-Mail.
 // Storno (ganz oder einzelne Tickets), Umbuchung und Absage einer Vorstellung.
 import type { Prisma } from '@prisma/client';
+import { protokoll, protokollMehrere, type Eintrag } from './audit';
 import { db, getSettings } from './db';
 import { fmtDatum, fmtZeit } from './dates';
 import { renderNumber, nextSequence } from './invoice-calc';
@@ -23,6 +24,16 @@ export const stornoMoeglich = (startsAt: Date, jetzt = new Date()) => startsAt.g
 const NUMMER_LOCK = 7_401_001;
 const nummernSperre = (tx: Tx) => tx.$executeRaw`SELECT pg_advisory_xact_lock(${NUMMER_LOCK}::bigint)`;
 const TX_OPT = { maxWait: 10_000, timeout: 20_000 };
+
+/** Wer handelt, wenn niemand angemeldet ist (Shop, Partner-API, Zahlungsrückmeldung) */
+async function akteur(o: { channel: string; partnerId?: string | null }) {
+  if (o.partnerId) {
+    const p = await db.partner.findUnique({ where: { id: o.partnerId }, select: { name: true } });
+    return `Partner ${p?.name ?? o.partnerId}`;
+  }
+  return o.channel === 'web' ? 'Webshop' : 'System';
+}
+const ticketInfo = (t: { id: string; code: string; seatId: string; kat: string; art: string; priceCents: number }) => ({ id: t.id, code: t.code, platz: sitzName(t.seatId), kat: t.kat, art: t.art, preisCents: t.priceCents });
 
 async function bestellnummer(tx: Tx) {
   await nummernSperre(tx);
@@ -59,7 +70,7 @@ export async function bestellungAnlegen(p: { holdToken: string; kunde?: KundeEin
     const v = await gutscheinPruefen(p.voucherCode);
     voucherCents = Math.min(v.remainingCents, total);
   }
-  return db.$transaction(async (tx) => {
+  const order = await db.$transaction(async (tx) => {
     const kunde = p.kunde ? await kundeAnlegen(tx, p.kunde) : null;
     // Reservierung für die Dauer der Zahlung verlängern
     const bis = new Date(Math.max(hold.expiresAt.getTime(), Date.now() + 10 * 60e3));
@@ -70,8 +81,18 @@ export async function bestellungAnlegen(p: { holdToken: string; kunde?: KundeEin
         number: await bestellnummer(tx), channel: p.channel ?? 'web', showId: show.id, customerId: kunde?.id ?? p.customerId, totalCents: total, voucherCents,
         partnerId: p.partnerId, partnerRef: p.partnerRef, createdById: p.createdById, voucherCode: voucherCents ? p.voucherCode!.trim().toUpperCase() : null, locale: p.locale ?? 'de', note: p.note ?? '', holdId: hold.id,
       },
+      include: { customer: true },
     });
   }, TX_OPT);
+  await protokoll({
+    akteur: await akteur(order), action: 'bestellung_angelegt', entity: 'order', entityId: order.id,
+    data: { vorstellung: show.startsAt, showId: show.id, plaetze: pos.map((x) => ({ platz: sitzName(x.seatId), seatId: x.seatId, kat: x.kat, art: x.art, preisCents: x.priceCents })), reservierungBis: hold.expiresAt },
+    nachher: {
+      number: order.number, channel: order.channel, status: order.status, totalCents: order.totalCents, voucherCents: order.voucherCents, voucherCode: order.voucherCode, partnerRef: order.partnerRef, note: order.note || undefined,
+      kunde: order.customer ? { id: order.customer.id, name: `${order.customer.firstName} ${order.customer.lastName}`.trim(), email: order.customer.email } : null,
+    },
+  });
+  return order;
 }
 
 export async function gutscheinPruefen(code: string) {
@@ -92,15 +113,19 @@ export async function bezahlt(orderId: string, z: { provider: string; providerRe
     await zahlungOhnePlaetze(orderId, z);
     return null;
   }
+  const info: { tickets: Parameters<typeof ticketInfo>[0][]; rechnung?: { id: string; number: string; netCents: number; vatCents: number; grossCents: number } | null; gutschein?: { id: string; code: string; vorher: number; nachher: number } | null; o?: { number: string; channel: string; partnerId: string | null } } = { tickets: [] };
   const fertig = await db.$transaction(async (tx) => {
+    info.tickets = [];
     const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { show: true } });
     if (o.status !== 'offen') return null;
+    info.o = o;
     const hold = o.holdId ? await tx.hold.findUnique({ where: { id: o.holdId } }) : null;
     if (!hold) throw new Error('Reservierung nicht mehr vorhanden – Zahlung muss erstattet werden');
     const pos = positionen(hold.seats as { seatId: string; art: string }[], o.show.prices as Preise);
     const jetzt = new Date();
     for (const x of pos) {
       const t = await tx.ticket.create({ data: { orderId: o.id, showId: o.showId, seatId: x.seatId, kat: x.kat, art: x.art, priceCents: x.priceCents, vatRate: TICKET_UST, code: neuerCode() } });
+      info.tickets.push(t);
       // Reservierung → verkauft (inkl. Konfliktsitze bei Rollstuhlplätzen)
       await tx.seatLock.updateMany({ where: { holdId: hold.id, seatId: { in: zuSperren([x.seatId]) } }, data: { kind: 'ticket', ticketId: t.id, holdId: null, expiresAt: null } });
     }
@@ -108,6 +133,7 @@ export async function bezahlt(orderId: string, z: { provider: string; providerRe
     if (o.voucherCents > 0) {
       const red = await gutscheinAbbuchen(tx, o.id, o.voucherCents);
       if (!red) throw new Error('Gutschein nicht mehr gültig');
+      info.gutschein = red.info;
     }
     const zahl = o.totalCents - o.voucherCents;
     if (zahl > 0) {
@@ -118,11 +144,20 @@ export async function bezahlt(orderId: string, z: { provider: string; providerRe
       else await tx.payment.create({ data: { orderId: o.id, ...daten } });
     }
     const neu = await tx.order.update({ where: { id: o.id }, data: { status: 'bezahlt', paidAt: jetzt, paidCents: zahl, holdId: null } });
-    await rechnungFuerBestellung(tx, neu.id);
+    info.rechnung = await rechnungFuerBestellung(tx, neu.id);
     await bucheTicketverkauf(tx, { id: o.id, number: o.number, paidAt: jetzt, totalCents: o.totalCents, voucherCents: o.voucherCents, provider: z.provider, partner: !!o.partnerId, feeCommissionCents: z.commissionCents, voucherKonto: await gutscheinKonto(tx, o.voucherCode) });
     return neu;
   }, TX_OPT);
   if (fertig) {
+    const wer = await akteur({ channel: info.o!.channel, partnerId: info.o!.partnerId });
+    const e: Eintrag[] = [{
+      akteur: wer, action: 'bezahlt', entity: 'order', entityId: orderId,
+      data: { provider: z.provider, providerRef: z.providerRef, betragCents: z.amountCents, gebuehrCents: z.feeCents, provisionCents: z.commissionCents, tickets: info.tickets.map(ticketInfo), rechnung: info.rechnung?.number },
+      vorher: { status: 'offen', paidCents: 0 }, nachher: { status: 'bezahlt', paidCents: fertig.paidCents, paidAt: fertig.paidAt },
+    }];
+    if (info.rechnung) e.push({ akteur: wer, action: 'rechnung_erstellt', entity: 'invoice', entityId: info.rechnung.id, data: { bestellung: info.o!.number, orderId }, nachher: { number: info.rechnung.number, kind: 'rechnung', netCents: info.rechnung.netCents, vatCents: info.rechnung.vatCents, grossCents: info.rechnung.grossCents } });
+    if (info.gutschein) e.push({ akteur: wer, action: 'gutschein_eingeloest', entity: 'voucher', entityId: info.gutschein.id, data: { code: info.gutschein.code, bestellung: info.o!.number, orderId, betragCents: info.gutschein.vorher - info.gutschein.nachher }, vorher: { remainingCents: info.gutschein.vorher }, nachher: { remainingCents: info.gutschein.nachher } });
+    await protokollMehrere(e);
     cacheVerwerfen(fertig.showId);
     // Mail im Hintergrund: QR-Bilder und SMTP sollen die Antwort an den Shop nicht verzögern
     void ticketMail(orderId).catch(() => {});
@@ -140,7 +175,7 @@ async function zahlungOhnePlaetze(orderId: string, z: { provider: string; provid
   if (offen) await db.payment.update({ where: { id: offen.id }, data: daten });
   else if (z.amountCents > 0) await db.payment.create({ data: { orderId, ...daten } });
   await db.order.update({ where: { id: orderId }, data: { holdId: null, refundedCents: r.ok ? z.amountCents : 0, note: r.ok ? `Plätze nach Ablauf der Reservierung vergeben – ${formatEur(z.amountCents)} automatisch erstattet` : `Plätze nach Ablauf der Reservierung vergeben – Zahlung ${formatEur(z.amountCents)} bitte manuell erstatten (${r.fehler ?? ''})` } });
-  await db.auditLog.create({ data: { action: r.ok ? 'zahlung_erstattet_plaetze_weg' : 'zahlung_ohne_plaetze', entity: 'order', entityId: orderId, data: { provider: z.provider, providerRef: z.providerRef, amountCents: z.amountCents, erstattung: r } } });
+  await protokoll({ user: null, akteur: 'System', action: r.ok ? 'zahlung_erstattet_plaetze_weg' : 'zahlung_ohne_plaetze', entity: 'order', entityId: orderId, data: { provider: z.provider, providerRef: z.providerRef, amountCents: z.amountCents, erstattung: r }, vorher: { refundedCents: o.refundedCents, note: o.note }, nachher: { refundedCents: r.ok ? z.amountCents : 0 } });
   if (o.customer?.email) {
     const text = fuellen(`<h1 style="font-size:24px;margin:0 0 12px">Ihre Plätze waren leider nicht mehr frei</h1><p>Guten Tag {{vorname}} {{nachname}},</p><p>Ihre Zahlung für die Buchung {{nummer}} kam erst nach Ablauf der Reservierung bei uns an, und die Plätze waren inzwischen vergeben. ${r.ok ? `Wir haben ${formatEur(z.amountCents)} auf Ihr Zahlungsmittel zurückgebucht.` : 'Wir erstatten Ihnen den Betrag umgehend.'}</p><p>Bitte buchen Sie gerne erneut oder antworten Sie auf diese E-Mail.</p>`, { vorname: o.customer.firstName, nachname: o.customer.lastName, nummer: o.number });
     await senden({ to: o.customer.email, subject: `Buchung ${o.number}: Plätze nicht mehr verfügbar`, html: layout('Plätze nicht mehr verfügbar', text, await fussText()), template: 'zahlung_erstattet', orderId }).catch(() => {});
@@ -167,8 +202,9 @@ async function gutscheinAbbuchen(tx: Tx, orderId: string, betrag: number) {
   const o = await tx.order.findUniqueOrThrow({ where: { id: orderId } });
   const v = o.voucherCode ? await tx.voucher.findUnique({ where: { code: o.voucherCode } }) : null;
   if (!v || v.remainingCents < betrag) return null;
-  await tx.voucher.update({ where: { id: v.id }, data: { remainingCents: { decrement: betrag } } });
-  return tx.voucherRedemption.create({ data: { voucherId: v.id, orderId, amountCents: betrag } });
+  const neu = await tx.voucher.update({ where: { id: v.id }, data: { remainingCents: { decrement: betrag } } });
+  const red = await tx.voucherRedemption.create({ data: { voucherId: v.id, orderId, amountCents: betrag } });
+  return { red, info: { id: v.id, code: v.code, vorher: v.remainingCents, nachher: neu.remainingCents } };
 }
 
 /** Rechnung zur Bestellung (Kleinbetragsrechnung bzw. Rechnung mit UID, wenn Firma angegeben) */
@@ -226,7 +262,7 @@ export async function ticketMail(orderId: string) {
  * Storno ganzer Bestellungen oder einzelner Tickets.
  * methode: zahlungsmittel (Erstattung über den Anbieter) | gutschein (Wertgutschein) | keine (verfällt)
  */
-export async function stornieren(p: { orderId: string; ticketIds?: string[]; methode: 'zahlungsmittel' | 'gutschein' | 'keine'; grund: string; gebuehrCents?: number; notiz?: string; userId?: string; mail?: boolean; fristIgnorieren?: boolean }) {
+export async function stornieren(p: { orderId: string; ticketIds?: string[]; methode: 'zahlungsmittel' | 'gutschein' | 'keine'; grund: string; gebuehrCents?: number; notiz?: string; userId?: string; mail?: boolean; fristIgnorieren?: boolean; akteur?: string }) {
   const o = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { tickets: true, show: true, payments: true, customer: true } });
   if (!['bezahlt', 'teilstorniert'].includes(o.status)) throw new Error('Nur bezahlte Bestellungen können storniert werden');
   if (!p.fristIgnorieren && !stornoMoeglich(o.show.startsAt)) throw new Error(`Storno ist nur bis ${STORNO_FRIST_H} Stunden vor Beginn möglich`);
@@ -249,13 +285,16 @@ export async function stornieren(p: { orderId: string; ticketIds?: string[]; met
   if (p.methode === 'keine') auszahlen = 0;
   const erg = await db.$transaction(async (tx) => {
     let voucherId: string | undefined;
+    let gutschein: { id: string; code: string; valueCents: number; validUntil: Date | null } | undefined;
     if (alsGutschein > 0) {
       const v = await tx.voucher.create({ data: { code: `LOC-${neuerCode(8)}`, kind: 'wert', issuer: 'storno', valueCents: alsGutschein, remainingCents: alsGutschein, validUntil: new Date(Date.now() + 3 * 365 * 864e5), note: `Storno ${o.number}` } });
       voucherId = v.id;
+      gutschein = v;
     }
     await tx.ticket.updateMany({ where: { id: { in: ziel.map((t) => t.id) } }, data: { status: 'storniert' } });
     await tx.seatLock.deleteMany({ where: { ticketId: { in: ziel.map((t) => t.id) } } });
     const rest = o.tickets.filter((t) => t.status === 'gueltig' && !ziel.some((z) => z.id === t.id)).length + o.tickets.filter((t) => t.status === 'eingelassen').length;
+    const neuerStatus = rest ? 'teilstorniert' : 'storniert';
     await tx.order.update({ where: { id: o.id }, data: { status: rest ? 'teilstorniert' : 'storniert', cancelledAt: rest ? null : new Date(), refundedCents: { increment: ueberAnbieter } } });
     if (zahlung && ueberAnbieter) await tx.payment.update({ where: { id: zahlung.id }, data: { refundedCents: { increment: ueberAnbieter }, status: zahlung.refundedCents + ueberAnbieter >= zahlung.amountCents ? 'erstattet' : 'teilerstattet' } });
     const refund = await tx.refund.create({ data: { orderId: o.id, ticketIds: ziel.map((t) => t.id), amountCents: auszahlen, feeCents: gebuehr, method: p.methode, reason: p.grund, note: p.notiz ?? '', paymentId: zahlung?.id, voucherId, providerRef, createdById: p.userId } });
@@ -265,10 +304,25 @@ export async function stornieren(p: { orderId: string; ticketIds?: string[]; met
       await bucheStorno(tx, { id: `${refund.id}-z`, date: new Date(), orderNumber: o.number, bruttoCents: anteil, feeCents: p.methode === 'keine' ? anteil : gebuehr, method: p.methode === 'keine' ? 'keine' : 'zahlungsmittel', provider: zahlung?.provider ?? 'bar' });
     }
     if (alsGutschein > 0) await bucheStorno(tx, { id: `${refund.id}-g`, date: new Date(), orderNumber: o.number, bruttoCents: alsGutschein, feeCents: 0, method: 'gutschein', provider: '' });
-    await stornoRechnung(tx, o.id, ziel.map((t) => t.id));
-    return { refund, voucherId };
+    const stornoRe = await stornoRechnung(tx, o.id, ziel.map((t) => t.id));
+    return { refund, voucherId, gutschein, stornoRe, neuerStatus };
   }, TX_OPT);
   cacheVerwerfen(o.showId);
+  const wer = p.akteur ?? (await akteur(o));
+  const eintraege: Eintrag[] = [
+    {
+      akteur: wer, action: 'storno', entity: 'order', entityId: o.id,
+      data: {
+        refundId: erg.refund.id, tickets: ziel.map(ticketInfo), methode: p.methode, grund: p.grund, notiz: p.notiz || undefined, gebuehrCents: gebuehr, bruttoCents: brutto, erstattungCents: auszahlen,
+        ueberZahlungsmittelCents: ueberAnbieter, alsGutscheinCents: alsGutschein, provider: zahlung?.provider, providerRef, gutschein: erg.gutschein?.code, stornorechnung: erg.stornoRe?.number, fristIgnoriert: !!p.fristIgnorieren || undefined,
+      },
+      vorher: { status: o.status, refundedCents: o.refundedCents }, nachher: { status: erg.neuerStatus, refundedCents: o.refundedCents + ueberAnbieter },
+    },
+    ...ziel.map((t): Eintrag => ({ akteur: wer, action: 'ticket_storniert', entity: 'ticket', entityId: t.id, data: { code: t.code, platz: sitzName(t.seatId), bestellung: o.number, orderId: o.id, refundId: erg.refund.id, grund: p.grund }, vorher: { status: 'gueltig' }, nachher: { status: 'storniert' } })),
+  ];
+  if (erg.gutschein) eintraege.push({ akteur: wer, action: 'gutschein_ausgestellt', entity: 'voucher', entityId: erg.gutschein.id, data: { herkunft: 'storno', bestellung: o.number, orderId: o.id }, nachher: { code: erg.gutschein.code, valueCents: erg.gutschein.valueCents, validUntil: erg.gutschein.validUntil } });
+  if (erg.stornoRe) eintraege.push({ akteur: wer, action: 'stornorechnung_erstellt', entity: 'invoice', entityId: erg.stornoRe.id, data: { bestellung: o.number, orderId: o.id, storniert: erg.stornoRe.cancelsId }, nachher: { number: erg.stornoRe.number, kind: 'storno', netCents: erg.stornoRe.netCents, vatCents: erg.stornoRe.vatCents, grossCents: erg.stornoRe.grossCents } });
+  await protokollMehrere(eintraege);
   if (p.mail !== false && o.customer?.email) {
     const v = erg.voucherId ? await db.voucher.findUnique({ where: { id: erg.voucherId } }) : null;
     const erstattung = [
@@ -305,10 +359,16 @@ async function stornoRechnung(tx: Tx, orderId: string, ticketIds: string[]) {
 
 /** Vorstellung absagen: Verkauf stoppen, alle Tickets stornieren und erstatten (bzw. Gutschein) */
 export async function vorstellungAbsagen(showId: string, grund: string, methode: 'zahlungsmittel' | 'gutschein', userId?: string) {
+  const vorher = await db.show.findUniqueOrThrow({ where: { id: showId }, select: { status: true, cancelReason: true, startsAt: true } });
   await db.show.update({ where: { id: showId }, data: { status: 'abgesagt', cancelReason: grund } });
   await db.hold.deleteMany({ where: { showId } });
   // Unbezahlte Bestellungen (Rechnung, Zahlungslink) verfallen mit der Reservierung
-  await db.order.updateMany({ where: { showId, status: 'offen' }, data: { status: 'storniert', cancelledAt: new Date(), holdId: null } });
+  const offene = await db.order.findMany({ where: { showId, status: 'offen' }, select: { id: true, number: true } });
+  await db.order.updateMany({ where: { id: { in: offene.map((x) => x.id) } }, data: { status: 'storniert', cancelledAt: new Date(), holdId: null } });
+  await protokollMehrere([
+    { action: 'vorstellung_absagen', entity: 'show', entityId: showId, data: { termin: vorher.startsAt, methode, userId }, vorher: { status: vorher.status, cancelReason: vorher.cancelReason }, nachher: { status: 'abgesagt', cancelReason: grund } },
+    ...offene.map((x): Eintrag => ({ action: 'bestellung_verfallen', entity: 'order', entityId: x.id, data: { grund: 'Vorstellung abgesagt', bestellung: x.number }, vorher: { status: 'offen' }, nachher: { status: 'storniert' } })),
+  ]);
   const orders = await db.order.findMany({ where: { showId, status: { in: ['bezahlt', 'teilstorniert'] } }, select: { id: true } });
   const ergebnis = { ok: 0, fehler: [] as string[] };
   for (const o of orders) {
@@ -320,6 +380,7 @@ export async function vorstellungAbsagen(showId: string, grund: string, methode:
       ergebnis.fehler.push(`${o.id}: ${(e as Error).message}`);
     }
   }
+  await protokoll({ action: 'vorstellung_absagen_ergebnis', entity: 'show', entityId: showId, data: { storniert: ergebnis.ok, fehler: ergebnis.fehler } });
   // Vertriebspartner per Webhook informieren (läuft im Hintergrund, Fehler nur im Log)
   import('./partner').then((m) => m.absageMelden(showId, grund)).catch((e) => console.error('Partner-Webhook', e));
   return ergebnis;
@@ -338,11 +399,13 @@ async function absageMail(orderId: string, grund: string) {
 
 /** Gutschein verkaufen (Kasse oder Telefon) */
 export async function gutscheinVerkaufen(p: { cents: number; provider: string; note?: string; validYears?: number }) {
-  return db.$transaction(async (tx) => {
+  const v = await db.$transaction(async (tx) => {
     const v = await tx.voucher.create({ data: { code: `LOC-${neuerCode(8)}`, valueCents: p.cents, remainingCents: p.cents, validUntil: new Date(Date.now() + (p.validYears ?? 3) * 365 * 864e5), note: p.note ?? '' } });
     await bucheGutscheinverkauf(tx, { id: v.id, code: v.code, date: new Date(), cents: p.cents, provider: p.provider });
     return v;
   });
+  await protokoll({ action: 'gutschein_verkauft', entity: 'voucher', entityId: v.id, data: { provider: p.provider, note: p.note || undefined }, nachher: { code: v.code, valueCents: v.valueCents, validUntil: v.validUntil, active: true } });
+  return v;
 }
 
 export async function einstellungen() { return getSettings(); }

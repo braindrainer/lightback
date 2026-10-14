@@ -14,13 +14,19 @@ export async function POST(req: Request) {
   const ip = req.headers.get('x-real-ip') ?? req.headers.get('x-forwarded-for')?.split(',')[0] ?? '';
   const zurueck = (fehler: string) => weiter(`/login?fehler=${fehler}`);
   const fehlversuche = await db.loginAttempt.count({ where: { email: login, ok: false, createdAt: { gt: new Date(Date.now() - 15 * 60e3) } } });
-  if (fehlversuche >= 8) return zurueck('gesperrt');
+  if (fehlversuche >= 8) {
+    await audit(null, 'login_gesperrt', 'user', null, { login: login.slice(0, 80), fehlversuche }, { akteur: login.slice(0, 80) || 'unbekannt' });
+    return zurueck('gesperrt');
+  }
   const u = await db.user.findFirst({ where: { OR: [{ username: login }, { email: login }] } });
   const ok = !!u && u.active && (await bcrypt.compare(pw, u.passwordHash));
   await db.loginAttempt.create({ data: { email: login, ip, ok } });
-  if (!ok || !u) return zurueck('falsch');
+  if (!ok || !u) {
+    await audit(null, 'login_fehlgeschlagen', 'user', u?.id ?? null, { login: login.slice(0, 80), grund: !u ? 'unbekannt' : !u.active ? 'deaktiviert' : 'passwort', fehlversuche: fehlversuche + 1 }, { akteur: login.slice(0, 80) || 'unbekannt' });
+    return zurueck('falsch');
+  }
   await db.user.update({ where: { id: u.id }, data: { lastLoginAt: new Date() } });
-  await audit({ id: u.id, name: u.name, email: u.email, roles: u.roles as Rolle[] }, 'login', 'user', u.id);
+  await audit({ id: u.id, name: u.name, email: u.email, roles: u.roles as Rolle[] }, 'login', 'user', u.id, { vorherigerLogin: u.lastLoginAt });
   const res = new NextResponse(null, { status: 303, headers: { Location: ziel.startsWith('/') && !ziel.startsWith('//') ? ziel : '/' } });
   res.cookies.set(SESSION_COOKIE, await createSessionToken({ sub: u.id, roles: u.roles as Rolle[], name: u.name }), cookieOptions());
   return res;

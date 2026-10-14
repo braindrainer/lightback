@@ -1,5 +1,7 @@
 #!/bin/sh
 set -e
-# Schema anwenden (additive Änderungen), dann Server starten
+# Protokollspalten vorbereiten, Schema anwenden (additive Änderungen), Schutz-Trigger setzen, dann Server starten
+tsx scripts/schutz.ts --spalten
 prisma db push --skip-generate --schema prisma/schema.prisma
+tsx scripts/schutz.ts
 exec node server.js

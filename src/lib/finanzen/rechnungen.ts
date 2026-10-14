@@ -1,5 +1,6 @@
 // Rechnungen: manuelle B2B-Rechnungen mit Buchung, Zahlungseingang, Storno, PDF (zwischengespeichert), Versand.
 import type { Invoice, Prisma } from '@prisma/client';
+import { protokoll, protokollMehrere } from '../audit';
 import { db, getSettings } from '../db';
 import { fmtDatum } from '../dates';
 import { invoiceTotals, nextSequence, renderNumber } from '../invoice-calc';
@@ -78,15 +79,18 @@ export function rechnungsZeilen(items: Position[], sg = 1, forderung = '2000'): 
 export async function rechnungAnlegen(r: NeueRechnung, userId?: string) {
   const t = invoiceTotals(r.items.map((i) => ({ ...i, discountPct: 0 })), 'domestic');
   if (t.gross <= 0) throw new Error('Der Rechnungsbetrag muss größer als 0 sein.');
-  return db.$transaction(async (tx) => {
+  const erg = await db.$transaction(async (tx) => {
     if (r.items.some((i) => i.vatRate === 0)) await nullKontoSicherstellen(tx);
     const number = await naechsteNummer(tx, r.issueDate);
     const inv = await tx.invoice.create({
       data: { number, kind: 'rechnung', status: 'offen', recipient: r.recipient as object, issueDate: r.issueDate, serviceDate: r.serviceDate, dueDate: r.dueDate, items: r.items, netCents: t.net, vatCents: t.vat, grossCents: t.gross, note: r.note },
     });
-    await buchen({ date: buchTag(r.issueDate), text: `Ausgangsrechnung ${number} ${r.recipient.company || r.recipient.name || ''}`.trim(), docRef: number, source: 'invoice', sourceId: inv.id, createdById: userId, zeilen: rechnungsZeilen(r.items) }, tx);
-    return inv;
+    const e = await buchen({ date: buchTag(r.issueDate), text: `Ausgangsrechnung ${number} ${r.recipient.company || r.recipient.name || ''}`.trim(), docRef: number, source: 'invoice', sourceId: inv.id, createdById: userId, zeilen: rechnungsZeilen(r.items) }, tx);
+    return { inv, e };
   });
+  const inv = erg.inv;
+  await protokoll({ action: 'rechnung_erstellt', entity: 'invoice', entityId: inv.id, data: { manuell: true, buchungNr: erg.e?.number }, nachher: { number: inv.number, kind: inv.kind, status: inv.status, recipient: inv.recipient, issueDate: inv.issueDate, serviceDate: inv.serviceDate, dueDate: inv.dueDate, items: inv.items, netCents: inv.netCents, vatCents: inv.vatCents, grossCents: inv.grossCents, note: inv.note } });
+  return inv;
 }
 
 /** Kalendertag (Wien) eines Zeitpunkts als @db.Date-Wert */
@@ -96,11 +100,13 @@ export async function rechnungBezahlt(id: string, datum: Date, userId?: string, 
   const inv = await db.invoice.findUniqueOrThrow({ where: { id } });
   if (inv.kind !== 'rechnung' || inv.status !== 'offen') throw new Error('Nur offene Rechnungen können als bezahlt markiert werden.');
   if (inv.orderId) throw new Error('Rechnungen aus Bestellungen werden über die Bestellung bezahlt.');
-  return db.$transaction(async (tx) => {
+  const e = await db.$transaction(async (tx) => {
     const e = await buchen({ date: datum, text: `Zahlungseingang ${inv.number}`, docRef: inv.number, source: quelle?.source ?? 'invoice-paid', sourceId: quelle?.sourceId ?? inv.id, createdById: userId, zeilen: [{ konto: gegenkonto, soll: inv.grossCents }, { konto: '2000', haben: inv.grossCents }] }, tx);
     await tx.invoice.update({ where: { id }, data: { status: 'bezahlt' } });
     return e;
   });
+  await protokoll({ action: 'rechnung_bezahlt', entity: 'invoice', entityId: id, data: { number: inv.number, datum, gegenkonto, betragCents: inv.grossCents, buchungNr: e?.number, quelle: quelle ?? undefined }, vorher: { status: inv.status }, nachher: { status: 'bezahlt' } });
+  return e;
 }
 
 export async function rechnungStornieren(id: string, userId?: string) {
@@ -109,7 +115,7 @@ export async function rechnungStornieren(id: string, userId?: string) {
   if (inv.kind !== 'rechnung' || inv.status === 'storniert') throw new Error('Diese Rechnung kann nicht storniert werden.');
   const items = (inv.items as Position[]).map((i) => ({ ...i, quantity: -i.quantity }));
   const jetzt = new Date();
-  return db.$transaction(async (tx) => {
+  const st = await db.$transaction(async (tx) => {
     const number = await naechsteNummer(tx, jetzt);
     const st = await tx.invoice.create({
       data: { number, kind: 'storno', status: 'bezahlt', cancelsId: inv.id, recipient: inv.recipient as object, issueDate: jetzt, serviceDate: inv.serviceDate, items, netCents: -inv.netCents, vatCents: -inv.vatCents, grossCents: -inv.grossCents, note: `Storno zu Rechnung ${inv.number} vom ${fmtDatum(inv.issueDate)}` },
@@ -118,6 +124,11 @@ export async function rechnungStornieren(id: string, userId?: string) {
     await tx.invoice.update({ where: { id }, data: { status: 'storniert' } });
     return st;
   });
+  await protokollMehrere([
+    { action: 'rechnung_storniert', entity: 'invoice', entityId: id, data: { number: inv.number, stornorechnung: st.number, stornoId: st.id }, vorher: { status: inv.status }, nachher: { status: 'storniert' } },
+    { action: 'stornorechnung_erstellt', entity: 'invoice', entityId: st.id, data: { storniert: inv.number, cancelsId: inv.id }, nachher: { number: st.number, kind: 'storno', netCents: st.netCents, vatCents: st.vatCents, grossCents: st.grossCents } },
+  ]);
+  return st;
 }
 
 const STANDARD_MAIL = {
@@ -141,6 +152,8 @@ export async function rechnungSenden(id: string, an: string) {
   };
   const betreff = fuellen(tpl.subject, werte);
   const r = await senden({ to: an, subject: betreff, html: layout(betreff, fuellen(tpl.body, werte), await fussText()), template: 'rechnung', orderId: inv.orderId ?? undefined, anhaenge: [{ filename: name, content: pdf, contentType: 'application/pdf' }] });
-  if (r.ok) await db.invoice.update({ where: { id }, data: { sentAt: new Date() } });
+  const jetzt = new Date();
+  if (r.ok) await db.invoice.update({ where: { id }, data: { sentAt: jetzt } });
+  await protokoll({ action: r.ok ? 'rechnung_gesendet' : 'rechnung_senden_fehler', entity: 'invoice', entityId: id, data: { number: inv.number, an, mailId: r.id, demo: 'demo' in r ? r.demo : undefined, fehler: 'fehler' in r ? r.fehler : undefined }, ...(r.ok ? { vorher: { sentAt: inv.sentAt }, nachher: { sentAt: jetzt } } : {}) });
   return r;
 }

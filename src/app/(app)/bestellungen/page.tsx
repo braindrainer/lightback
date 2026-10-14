@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import type { Prisma } from '@prisma/client';
 import { requireRole } from '@/lib/auth';
 import { db } from '@/lib/db';
@@ -18,6 +19,12 @@ export default async function Bestellungen({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const q = (sp.q ?? '').trim();
   const seite = Math.max(1, Number(sp.seite) || 1);
+  // Exakter Ticketcode (auch mit Leer- oder Bindestrichen): direkt zum Ticket
+  const code = q.toUpperCase().replace(/[\s-]/g, '');
+  if (/^[A-Z0-9]{6,16}$/.test(code)) {
+    const t = await db.ticket.findUnique({ where: { code }, select: { id: true } });
+    if (t) redirect(`/tickets/${t.id}`);
+  }
   const and: Prisma.OrderWhereInput[] = [];
   if (q) {
     const teile = q.split(/\s+/).filter(Boolean);

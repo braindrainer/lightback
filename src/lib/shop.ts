@@ -1,5 +1,6 @@
 // Fachlogik hinter der Shop-API (light.skillful.at) und der Partner-API:
 // Verfügbarkeit, Reservierungen, Bestellung mit Zahlungsstart, Abschluss nach Rückkehr vom Anbieter.
+import { protokoll } from './audit';
 import { createHash } from 'node:crypto';
 import { Prisma, type Payment } from '@prisma/client';
 import { db } from './db';
@@ -268,12 +269,13 @@ export async function zahlungAbschliessen(zahlung: Payment, e: Start) {
       // Geld ist da, Reservierung aber weg → manuell erstatten oder Plätze zuweisen
       console.error('Zahlung ohne Reservierung', zahlung.id, err);
       await db.payment.update({ where: { id: zahlung.id }, data: { status: 'bezahlt', paidAt: new Date(), raw: { fehler: (err as Error).message, anbieter: (e.raw ?? null) as object } } });
-      await db.auditLog.create({ data: { action: 'zahlung_ohne_reservierung', entity: 'order', entityId: zahlung.orderId, data: { paymentId: zahlung.id, fehler: (err as Error).message } } });
+      await protokoll({ user: null, akteur: `Zahlung ${zahlung.provider}`, action: 'zahlung_ohne_reservierung', entity: 'order', entityId: zahlung.orderId, data: { paymentId: zahlung.id, provider: zahlung.provider, providerRef: e.providerRef || zahlung.providerRef, betragCents: zahlung.amountCents, fehler: (err as Error).message }, vorher: { zahlung: zahlung.status }, nachher: { zahlung: 'bezahlt' } });
       return 'fehler' as const;
     }
     return 'bezahlt' as const;
   }
   if (e.status === 'abgelehnt' && zahlung.status === 'offen') {
+    await protokoll({ user: null, akteur: `Zahlung ${zahlung.provider}`, action: 'zahlung_abgelehnt', entity: 'order', entityId: zahlung.orderId, data: { paymentId: zahlung.id, provider: zahlung.provider, fehler: e.fehler }, vorher: { status: 'offen' }, nachher: { status: 'storniert' } });
     await db.$transaction([
       db.payment.update({ where: { id: zahlung.id }, data: { status: 'fehlgeschlagen', raw: (e.raw ?? undefined) as object | undefined } }),
       db.order.updateMany({ where: { id: zahlung.orderId, status: 'offen' }, data: { status: 'storniert', cancelledAt: new Date(), holdId: null, note: `Zahlung abgelehnt: ${e.fehler ?? ''}`.trim() } }),

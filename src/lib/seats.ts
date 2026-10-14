@@ -4,8 +4,9 @@
 // vom Cron bzw. höchstens alle 30 s nebenbei gelöscht.
 import { createHash, randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
+import { protokoll } from './audit';
 import { db } from './db';
-import { SITZ, SITZE, type Kat } from './saal';
+import { SITZ, SITZE, sitzName, type Kat } from './saal';
 
 export const HOLD_MIN = 15;
 export const VERLAENGERUNG_MIN = 10;
@@ -234,12 +235,27 @@ export async function sperren(showId: string, seatIds: string[], reason: string)
   // Rollstuhlplatz gesperrt → auch die Zusatzsitze seines Stellplatzes (sonst wirken sie frei, sind aber nicht verkaufbar)
   seatIds = zuSperren(seatIds);
   await abgelaufeneLoesen(showId, seatIds);
-  await db.seatLock.createMany({ data: seatIds.map((seatId) => ({ showId, seatId, kind: 'block', reason })), skipDuplicates: true });
+  const vorher = await db.seatLock.findMany({ where: { showId, seatId: { in: seatIds } }, select: { seatId: true, kind: true, reason: true } });
+  const r = await db.seatLock.createMany({ data: seatIds.map((seatId) => ({ showId, seatId, kind: 'block', reason })), skipDuplicates: true });
   cacheVerwerfen(showId);
+  const belegt = new Set(vorher.map((v) => v.seatId));
+  const neu = seatIds.filter((id) => !belegt.has(id));
+  await protokoll({
+    action: 'plaetze_sperren', entity: 'show', entityId: showId,
+    data: { grund: reason, gesperrt: r.count, plaetze: neu.map(sitzName), seatIds: neu, schonBelegt: vorher.length ? vorher.map((v) => `${sitzName(v.seatId)} (${v.kind}${v.reason ? `: ${v.reason}` : ''})`) : undefined },
+    vorher: { gesperrt: [] }, nachher: { gesperrt: neu.map(sitzName) },
+  });
 }
 export async function entsperren(showId: string, seatIds: string[]) {
-  await db.seatLock.deleteMany({ where: { showId, seatId: { in: zuSperren(seatIds) }, kind: 'block' } });
+  const ids = zuSperren(seatIds);
+  const vorher = await db.seatLock.findMany({ where: { showId, seatId: { in: ids }, kind: 'block' }, select: { seatId: true, reason: true } });
+  await db.seatLock.deleteMany({ where: { showId, seatId: { in: ids }, kind: 'block' } });
   cacheVerwerfen(showId);
+  await protokoll({
+    action: 'plaetze_entsperren', entity: 'show', entityId: showId,
+    data: { entsperrt: vorher.length, seatIds: vorher.map((v) => v.seatId) },
+    vorher: { gesperrt: vorher.map((v) => `${sitzName(v.seatId)}${v.reason ? ` (${v.reason})` : ''}`) }, nachher: { gesperrt: [] },
+  });
 }
 
 /** Reservierung einer offenen Bestellung (Rechnung, Zahlungslink) bis zu einem Zeitpunkt halten */
