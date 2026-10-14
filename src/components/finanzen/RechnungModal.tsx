@@ -3,8 +3,11 @@
 // Am Desktop das PDF, am Handy (oder ohne PDF-Anzeige im Browser) die HTML-Fassung, auf Bildschirmbreite skaliert.
 import { useEffect, useId, useRef, useState } from 'react';
 
-export default function RechnungModal({ id, nummer, storno, className = 'btn-primary btn-sm', knopf = 'Rechnung ansehen' }: { id: string; nummer: string; storno?: boolean; className?: string; knopf?: string }) {
-  const [offen, setOffen] = useState(false);
+/** Ohne Knopf (ohneKnopf + offen/onClose) lässt sich der Dialog von außen öffnen, z. B. aus einem Menü */
+export default function RechnungModal({ id, nummer, storno, className = 'btn-primary btn-sm', knopf = 'Rechnung ansehen', ohneKnopf, offen: offenAussen, onClose }: { id: string; nummer: string; storno?: boolean; className?: string; knopf?: string; ohneKnopf?: boolean; offen?: boolean; onClose?: () => void }) {
+  const [offenInnen, setOffenInnen] = useState(false);
+  const offen = ohneKnopf ? !!offenAussen : offenInnen;
+  const setOffen = (v: boolean) => (ohneKnopf ? (!v && onClose?.()) : setOffenInnen(v));
   const [html, setHtml] = useState(false);
   const d = useRef<HTMLDialogElement>(null);
   const ausloeser = useRef<HTMLButtonElement>(null);
@@ -26,10 +29,11 @@ export default function RechnungModal({ id, nummer, storno, className = 'btn-pri
 
   return (
     <>
-      <button ref={ausloeser} type="button" className={className} onClick={() => setOffen(true)} aria-haspopup="dialog">
+      {!ohneKnopf && <button ref={ausloeser} type="button" className={className} onClick={() => setOffen(true)} aria-haspopup="dialog">
         {knopf}<span className="sr-only"> – {art} {nummer}</span>
-      </button>
+      </button>}
       <dialog ref={d} aria-labelledby={titelId} onClose={() => { setOffen(false); ausloeser.current?.focus(); }}
+        onMouseDown={(e) => { if (e.target === d.current) setOffen(false); }}
         className="m-auto h-[min(92dvh,1100px)] w-[min(calc(100vw-1.5rem),980px)] max-h-none max-w-none overflow-hidden rounded-xl border border-line bg-card p-0 text-ink shadow-2xl backdrop:bg-nacht/70 max-sm:h-dvh max-sm:w-screen max-sm:rounded-none max-sm:border-0">
         {offen && (
           <div className="flex h-full flex-col">

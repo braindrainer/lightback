@@ -1,4 +1,6 @@
+import Link from 'next/link';
 import Nav from '@/components/Nav';
+import { Hinweis, ToastBereich } from '@/components/ui';
 import ScrollBereiche from '@/components/ScrollBereiche';
 import { hat, requireRole } from '@/lib/auth';
 import { NAV } from '@/lib/nav';
@@ -23,11 +25,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="lg:flex">
       <Nav gruppen={gruppen} badges={badges} suche={hat(u, 'leitung')} name={u.name} rollen={u.roles.map((r) => ROLLEN_NAME[r]).join(', ')} />
-      <main id="inhalt" className="min-w-0 flex-1 px-3 py-5 sm:px-6 lg:px-8 lg:py-7">
-        {s.demoMode && <p className="mb-4 rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-900">Demo-Modus: Zahlungen sind simuliert, E-Mails werden nicht verschickt (siehe Einstellungen).</p>}
-        {children}
+      <main id="inhalt" className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
+        <div className="mx-auto max-w-[1400px]">
+          {s.demoMode && <Hinweis art="demo">Demo-Modus: Zahlungen sind simuliert, E-Mails werden nicht verschickt (siehe <Link href="/einstellungen" className="underline underline-offset-4">Einstellungen</Link>).</Hinweis>}
+          {children}
+        </div>
       </main>
       <ScrollBereiche />
+      <ToastBereich />
     </div>
   );
 }
