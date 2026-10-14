@@ -41,6 +41,7 @@ export default function Nav({ gruppen, name, rollen }: { gruppen: { titel: strin
     <div className="mt-auto border-t border-white/10 px-3 pt-4 text-[13px] text-white/75">
       <p className="font-semibold text-white">{name}</p>
       <p className="text-[12px]">{rollen}</p>
+      <Link href="/konto" onClick={() => setOffen(false)} className="mt-2 inline-block text-white/85 underline underline-offset-4 hover:text-white">Mein Konto</Link>
       <form action="/api/auth/logout" method="post" className="mt-2"><button className="text-gold underline underline-offset-4">Abmelden</button></form>
     </div>
   );
