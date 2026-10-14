@@ -10,10 +10,20 @@ function Icon({ d }: { d: string }) {
 
 const initialen = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((t) => t[0]!.toUpperCase()).join('') || '?';
 
-export default function Nav({ gruppen, name, rollen }: { gruppen: { titel: string; items: NavItem[] }[]; name: string; rollen: string }) {
+type Badge = { n: number; text: string };
+
+export default function Nav({ gruppen, name, rollen, badges = {}, suche = false }: { gruppen: { titel: string; items: NavItem[] }[]; name: string; rollen: string; badges?: Record<string, Badge>; suche?: boolean }) {
   const pfad = usePathname();
   const [offen, setOffen] = useState(false);
   const [sichtbar, setSichtbar] = useState(false); // für die Schiebe-Animation
+  // eingeklappte Gruppen (gemerkt im Browser; erst nach dem Laden angewendet, damit Server und Browser gleich rendern)
+  const [zu, setZu] = useState<string[]>([]);
+  useEffect(() => { try { setZu(JSON.parse(localStorage.getItem('lb-nav-zu') ?? '[]')); } catch { /* privat */ } }, []);
+  const umschalten = (t: string) => setZu((alt) => {
+    const neu = alt.includes(t) ? alt.filter((x) => x !== t) : [...alt, t];
+    try { localStorage.setItem('lb-nav-zu', JSON.stringify(neu)); } catch { /* privat */ }
+    return neu;
+  });
   const knopf = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
 
@@ -49,23 +59,49 @@ export default function Nav({ gruppen, name, rollen }: { gruppen: { titel: strin
 
   const logo = <img src="/img/logo-wortmarke.svg" alt="Light of Creation" className="h-11 w-auto" />;
 
+  const suchfeld = suche && (
+    <form action="/bestellungen" role="search" className="px-1">
+      <label htmlFor="nav-suche" className="sr-only">Bestellung, Ticketcode, Name oder E-Mail suchen</label>
+      <div className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/[.06] px-2.5 focus-within:border-gold">
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-white/60" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>
+        <input id="nav-suche" name="q" type="search" placeholder="Suchen …" className="min-h-10 w-full bg-transparent text-[14px] text-white outline-none placeholder:text-white/50" />
+      </div>
+    </form>
+  );
+
   const liste = (
-    <nav aria-label="Hauptmenü" className="flex flex-col gap-5">
-      {gruppen.map((g) => (
-        <div key={g.titel || 'start'}>
-          {g.titel && <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/50">{g.titel}</p>}
-          <ul className="grid gap-0.5">
-            {g.items.map((i) => (
-              <li key={i.href}>
-                <Link href={i.href} aria-current={aktiv(i.href) ? 'page' : undefined}
-                  className={`relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] transition-colors ${aktiv(i.href) ? 'bg-white/10 font-semibold text-gold before:absolute before:inset-y-1.5 before:-left-3 before:w-[3px] before:rounded-r before:bg-gold' : 'text-white/80 hover:bg-white/[.06] hover:text-white'}`}>
-                  <Icon d={i.icon} />{i.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
+    <nav aria-label="Hauptmenü" className="flex flex-col gap-4">
+      {gruppen.map((g) => {
+        const eingeklappt = !!g.titel && zu.includes(g.titel) && !g.items.some((i) => aktiv(i.href));
+        const summe = g.items.reduce((n, i) => n + (badges[i.href]?.n ?? 0), 0);
+        return (
+          <div key={g.titel || 'start'}>
+            {g.titel && (
+              <button type="button" onClick={() => umschalten(g.titel)} aria-expanded={!eingeklappt}
+                className="mb-1 flex w-full items-center justify-between rounded-md px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55 hover:text-white">
+                <span>{g.titel}{eingeklappt && summe > 0 && <span className="ml-2 rounded-full bg-gold px-1.5 text-[10px] text-nacht">{summe}</span>}</span>
+                <svg aria-hidden="true" viewBox="0 0 24 24" className={`h-3.5 w-3.5 transition-transform ${eingeklappt ? '-rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6" /></svg>
+              </button>
+            )}
+            {!eingeklappt && (
+              <ul className="grid gap-0.5">
+                {g.items.map((i) => {
+                  const b = badges[i.href];
+                  return (
+                    <li key={i.href}>
+                      <Link href={i.href} aria-current={aktiv(i.href) ? 'page' : undefined}
+                        className={`relative flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] transition-colors ${aktiv(i.href) ? 'bg-white/10 font-semibold text-gold before:absolute before:inset-y-1.5 before:-left-3 before:w-[3px] before:rounded-r before:bg-gold' : 'text-white/80 hover:bg-white/[.06] hover:text-white'}`}>
+                        <Icon d={i.icon} /><span className="flex-1">{i.label}</span>
+                        {b && b.n > 0 && <span className="rounded-full bg-gold px-2 py-0.5 text-[11px] font-bold leading-none text-nacht"><span aria-hidden="true">{b.n}</span><span className="sr-only">, {b.n} {b.text}</span></span>}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        );
+      })}
     </nav>
   );
 
@@ -89,6 +125,7 @@ export default function Nav({ gruppen, name, rollen }: { gruppen: { titel: strin
     <>
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col gap-6 overflow-y-auto border-r border-white/5 bg-nacht px-3 py-6 lg:flex">
         <Link href="/" className="px-3" aria-label="Light of Creation – zur Übersicht">{logo}</Link>
+        {suchfeld}
         {liste}
         {fuss}
       </aside>
@@ -109,6 +146,7 @@ export default function Nav({ gruppen, name, rollen }: { gruppen: { titel: strin
               <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>Schließen
             </button>
           </div>
+          {suchfeld}
           {liste}
           {fuss}
         </div>
