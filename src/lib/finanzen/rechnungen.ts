@@ -2,9 +2,12 @@
 import type { Invoice, Prisma } from '@prisma/client';
 import { protokoll, protokollMehrere } from '../audit';
 import { db, getSettings } from '../db';
-import { fmtDatum } from '../dates';
+import { fmtDatum, fmtZeit } from '../dates';
 import { invoiceTotals, nextSequence, renderNumber } from '../invoice-calc';
-import { rechnungHtml, type Empfaenger, type Position, type RechnungDoc } from '../invoice-html';
+import { rechnungHtml, RECHNUNG_BILDER, RECHNUNG_VORLAGE, type Empfaenger, type Position, type RechnungDoc } from '../invoice-html';
+import { pdfBeilagen } from '../marke';
+import { sitzName } from '../saal';
+import { ZAHLART_NAME } from '../../components/verkauf/texte';
 import { buchen, ERLOESKONTO, ust, STEUERCODES, type Zeile } from '../ledger';
 import { fussText, layout, senden, vorlage, fuellen } from '../mail';
 import { formatEur } from '../money';
@@ -28,25 +31,55 @@ export async function naechsteNummer(tx: Tx, datum: Date) {
   return renderNumber(s.invoiceNumberFmt, s.invoicePrefix, datum, nextSequence(s.invoiceNumberFmt, s.invoicePrefix, datum, vorhandene, 1));
 }
 
-/** Rechnung als Dokument für das Layout */
+/** Rechnung als Dokument für das Layout (bei Bestellrechnungen mit Plätzen je Position und Zahlungen) */
 export async function rechnungDoc(inv: Invoice): Promise<RechnungDoc> {
   const storniert = inv.cancelsId ? await db.invoice.findUnique({ where: { id: inv.cancelsId }, select: { number: true, issueDate: true } }) : null;
-  return {
+  const items = inv.items as Position[];
+  const doc: RechnungDoc = {
     number: inv.number, kind: inv.kind, status: inv.status, issueDate: inv.issueDate, serviceDate: inv.serviceDate, dueDate: inv.dueDate,
-    recipient: inv.recipient as Empfaenger, items: inv.items as Position[], netCents: inv.netCents, vatCents: inv.vatCents, grossCents: inv.grossCents,
+    recipient: inv.recipient as Empfaenger, items, netCents: inv.netCents, vatCents: inv.vatCents, grossCents: inv.grossCents,
     note: inv.note, bruttoPreise: !!inv.orderId, storniert,
   };
+  if (!inv.orderId) return doc;
+  const o = await db.order.findUnique({ where: { id: inv.orderId }, include: { customer: { select: { email: true } }, tickets: { include: { show: { select: { startsAt: true } } } }, payments: { where: { status: { in: ['bezahlt', 'erstattet', 'teilerstattet'] } }, orderBy: { createdAt: 'asc' } }, redemptions: { include: { voucher: { select: { code: true } } } } } });
+  if (!o) return doc;
+  doc.bestellung = { number: o.number, email: o.customer?.email };
+  // Plätze je Position: gleiche Bezeichnung wie beim Anlegen der Rechnung (orders.rechnungFuerBestellung)
+  const frei = [...o.tickets].sort((a, b) => a.seatId.localeCompare(b.seatId, 'de', { numeric: true }));
+  const titel = (t: (typeof frei)[number]) => `Ticket ${t.kat === 'R' ? 'Rollstuhlplatz inkl. Begleitperson' : `Kategorie ${t.kat} ${t.art === 'ermaessigt' ? 'ermäßigt' : t.art === 'frei' ? 'Freikarte' : 'Vollpreis'}`} – ${fmtDatum(t.show.startsAt)} ${fmtZeit(t.show.startsAt)}`;
+  doc.details = items.map((it) => {
+    if (inv.kind !== 'rechnung') return null;
+    // neuere Rechnungen haben die Plätze gespeichert – maßgeblich ist der Stand bei Ausstellung
+    const gespeichert = (it as { plaetze?: string[] }).plaetze;
+    if (gespeichert?.length) {
+      const t0 = o.tickets.find((t) => gespeichert.includes(t.seatId)) ?? o.tickets[0];
+      const termin = t0 ? `${WOCHENTAG(t0.show.startsAt)}, ${fmtZeit(t0.show.startsAt)} Uhr, Votivkirche · ` : '';
+      return `${termin}${gespeichert.length > 1 ? 'Plätze' : 'Platz'}: ${gespeichert.map((id) => sitzName(id).replace(', Platz', ' Platz')).join(' · ')}`;
+    }
+    const passend = frei.filter((t) => titel(t) === it.title && t.priceCents === it.unitCents).slice(0, Math.abs(it.quantity));
+    for (const t of passend) frei.splice(frei.indexOf(t), 1);
+    if (!passend.length) return null;
+    const termin = `${WOCHENTAG(passend[0].show.startsAt)}, ${fmtZeit(passend[0].show.startsAt)} Uhr, Votivkirche`;
+    return `${termin} · ${passend.length > 1 ? 'Plätze' : 'Platz'}: ${passend.map((t) => sitzName(t.seatId).replace(', Platz', ' Platz')).join(' · ')}`;
+  });
+  doc.zahlungen = [
+    ...o.payments.map((p) => ({ art: ZAHLART_NAME[p.provider] ?? p.provider, datum: p.paidAt ?? p.createdAt, ref: p.providerRef, cents: p.amountCents })),
+    ...o.redemptions.map((r) => ({ art: `Gutschein ${r.voucher.code}`, datum: r.createdAt, ref: null, cents: r.amountCents })),
+  ];
+  return doc;
 }
+
+const WOCHENTAG = (d: Date) => new Intl.DateTimeFormat('de-AT', { timeZone: 'Europe/Vienna', weekday: 'long' }).format(d);
 
 /** PDF erzeugen oder aus dem Zwischenspeicher holen (neu, sobald sich der Status ändert – QR-Code nur bei offenen Rechnungen) */
 export async function rechnungPdf(id: string): Promise<{ pdf: Buffer; name: string }> {
   const inv = await db.invoice.findUniqueOrThrow({ where: { id } });
   const name = `${inv.number}.pdf`;
-  const rel = `rechnungen/${inv.issueDate.getUTCFullYear()}/${inv.number.replace(/[^\w-]/g, '_')}-${inv.status}.pdf`;
+  const rel = `rechnungen/${inv.issueDate.getUTCFullYear()}/${inv.number.replace(/[^\w-]/g, '_')}-${inv.status}-v${RECHNUNG_VORLAGE}.pdf`;
   if (inv.pdfPath === rel) {
     try { return { pdf: await lesen(rel), name }; } catch { /* neu erzeugen */ }
   }
-  const pdf = await htmlToPdf(await rechnungHtml(await rechnungDoc(inv), await getSettings()));
+  const pdf = await htmlToPdf(await rechnungHtml(await rechnungDoc(inv), await getSettings()), await pdfBeilagen(RECHNUNG_BILDER));
   await ablegen(rel, pdf);
   await db.invoice.update({ where: { id }, data: { pdfPath: rel } });
   return { pdf, name };
@@ -54,7 +87,7 @@ export async function rechnungPdf(id: string): Promise<{ pdf: Buffer; name: stri
 
 export async function rechnungVorschauHtml(id: string) {
   const inv = await db.invoice.findUniqueOrThrow({ where: { id } });
-  return rechnungHtml(await rechnungDoc(inv), await getSettings());
+  return rechnungHtml(await rechnungDoc(inv), await getSettings(), { modus: 'web' });
 }
 
 export type NeueRechnung = {

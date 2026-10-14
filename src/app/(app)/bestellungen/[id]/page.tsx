@@ -7,6 +7,8 @@ import { stornoMoeglich } from '@/lib/orders';
 import { sitzName } from '@/lib/saal';
 import { Empty, Money, PageHeader, StatusPill } from '@/components/ui';
 import { Verlauf } from '@/components/Verlauf';
+import RechnungModal from '@/components/finanzen/RechnungModal';
+import TicketBlock from '@/components/tickets/TicketBlock';
 import { AktionForm, Absenden } from '@/components/verkauf/form';
 import { AktionKnopf, KundeFormular, NotizFormular, StornoDialog, UmbuchungDialog, ZahlungErhalten } from '@/components/verkauf/BestellungAktionen';
 import { showOptionen } from '@/components/verkauf/showOptionen';
@@ -111,7 +113,7 @@ export default async function Bestellung({ params }: { params: Promise<{ id: str
       <Abschnitt id="rechnungen" titel={o.invoices.length > 1 ? `Rechnungen (${o.invoices.length})` : 'Rechnung'}>
         {o.invoices.length ? (
           <ul className="grid gap-4 px-5 pb-5">
-            {[...o.invoices].reverse().map((i, n) => (
+            {[...o.invoices].reverse().map((i) => (
               <li key={i.id} className="rounded-lg border border-line p-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <h3 className="text-base font-semibold">
@@ -132,17 +134,13 @@ export default async function Bestellung({ params }: { params: Promise<{ id: str
                 {darfRechnung && (
                   <>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <a href={`/rechnungen/${i.id}/pdf`} target="_blank" rel="noopener" className="btn-primary btn-sm">PDF ansehen<span className="sr-only"> – {i.number}, neues Fenster</span></a>
+                      <RechnungModal id={i.id} nummer={i.number} storno={i.kind === 'storno'} />
                       <a href={`/rechnungen/${i.id}/pdf?download=1`} className="btn-secondary btn-sm">PDF herunterladen<span className="sr-only"> – {i.number}</span></a>
                     </div>
                     <AktionForm action={rechnungSendenAktion.bind(null, o.id, i.id)} className="mt-3 grid max-w-xl gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
                       <div><label htmlFor={`re-an-${i.id}`} className="label">Per E-Mail senden an</label><input id={`re-an-${i.id}`} name="an" type="email" required autoComplete="off" defaultValue={c?.email ?? ''} className="input" /></div>
                       <Absenden className="btn-secondary">Per E-Mail senden</Absenden>
                     </AktionForm>
-                    <details className="mt-3" open={n === 0 && o.invoices.length === 1}>
-                      <summary className="cursor-pointer text-sm font-medium text-accent-deep underline underline-offset-4">Vorschau {i.number}</summary>
-                      <iframe title={`Vorschau ${i.kind === 'storno' ? 'Stornorechnung' : 'Rechnung'} ${i.number}`} src={`/rechnungen/${i.id}/pdf?html=1`} sandbox="" loading="lazy" className="mt-2 h-[560px] w-full rounded-lg border border-line bg-white" />
-                    </details>
                   </>
                 )}
               </li>
@@ -169,6 +167,8 @@ export default async function Bestellung({ params }: { params: Promise<{ id: str
           </table>
         ) : <Empty>{o.status === 'offen' ? 'Tickets entstehen mit dem Zahlungseingang.' : 'Keine Tickets.'}</Empty>}
       </Abschnitt>
+
+      <TicketBlock orderId={o.id} />
 
       <div>
         <Abschnitt id="zahlungen" titel="Zahlungen">

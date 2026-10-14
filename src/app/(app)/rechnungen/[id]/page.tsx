@@ -10,6 +10,7 @@ import { pflichtHinweise, steuerAufstellung, type Empfaenger } from '@/lib/invoi
 import { Formular, Senden } from '@/components/finanzen/Formular';
 import { Money, PageHeader, StatusPill } from '@/components/ui';
 import { sendenAktion, stornoAktion, zahlungErhaltenAktion } from '../actions';
+import RechnungModal from '@/components/finanzen/RechnungModal';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,7 +34,8 @@ export default async function Rechnung({ params, searchParams }: { params: Promi
   return (
     <>
       <PageHeader title={`${inv.kind === 'storno' ? 'Stornorechnung' : 'Rechnung'} ${inv.number}`} sub={<>{manuell ? 'Manuelle Rechnung' : <>Aus Bestellung <Link className="underline underline-offset-4" href={`/bestellungen/${inv.order!.id}`}>{inv.order!.number}</Link></>} · ausgestellt {fmtDatum(inv.issueDate)}</>}>
-        <a href={`/rechnungen/${inv.id}/pdf?download=1`} className="btn-primary">PDF herunterladen</a>
+        <RechnungModal id={inv.id} nummer={inv.number} storno={inv.kind === 'storno'} className="btn-primary" />
+        <a href={`/rechnungen/${inv.id}/pdf?download=1`} className="btn-secondary">PDF herunterladen</a>
         <a href={`/rechnungen/${inv.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">PDF öffnen<span className="sr-only"> (neues Fenster)</span></a>
         <Link href="/rechnungen" className="btn-secondary">Zur Liste</Link>
       </PageHeader>
@@ -75,7 +77,7 @@ export default async function Rechnung({ params, searchParams }: { params: Promi
           <Verlauf ziele={[{ entity: 'invoice', ids: [inv.id] }, { entity: 'invoice', ids: [...stornos.map((x) => x.id), inv.cancelsId] }]} />
           <section className="card relative overflow-hidden" aria-labelledby="h-vorschau">
             <h2 id="h-vorschau" className="h2 px-5 pt-4">Vorschau</h2>
-            <iframe title={`Vorschau ${inv.number}`} src={`/rechnungen/${inv.id}/pdf?html=1`} className="mt-3 h-[640px] w-full border-t border-line bg-white" />
+            <iframe title={`Vorschau ${inv.number}`} src={`/rechnungen/${inv.id}/pdf?html=1`} className="mt-3 h-[720px] w-full border-t border-line bg-[#e7e2d8]" />
           </section>
         </div>
         <aside className="grid content-start gap-5" aria-label="Aktionen">

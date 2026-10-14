@@ -9,6 +9,7 @@ import { BELEGART_NAME, rksvZeit, type Belegart, type Position } from '@/lib/rks
 import { sitzName } from '@/lib/saal';
 import { zerlegen } from '@/lib/ledger';
 import { qrInhalt, qrSvg } from '@/lib/tickets';
+import BonTicket, { BON_TICKET_CSS } from '@/components/tickets/BonTicket';
 import { DruckSteuerung } from '../../Bon';
 import { BON_CSS } from '../../bon-css';
 
@@ -85,14 +86,8 @@ export default async function BelegSeite({ params, searchParams }: { params: Pro
           <>
             <hr />
             <h2 className="mitte">Ihre Tickets</h2>
-            {ticketQr.map(({ t, svg }) => (
-              <div key={t.id} className="mitte" style={{ marginTop: 6 }}>
-                <div><strong>{sitzName(t.seatId)}</strong></div>
-                <div>{t.kat === 'R' ? 'inkl. Begleitperson' : `Kategorie ${t.kat}${t.art === 'ermaessigt' ? ' ermäßigt' : ''}`} · {fmtDatum(t.show.startsAt)} {rksvZeit(t.show.startsAt).slice(11, 16)}</div>
-                {t.status === 'storniert' ? <div className="marke">STORNIERT – ungültig</div> : <div className="qr-klein" role="img" aria-label={`QR-Code Ticket ${t.code}`} dangerouslySetInnerHTML={{ __html: svg }} />}
-                <div>{t.code}</div>
-              </div>
-            ))}
+            <style dangerouslySetInnerHTML={{ __html: BON_TICKET_CSS }} />
+            {ticketQr.map(({ t, svg }, n) => <BonTicket key={t.id} t={t} svg={svg} nr={n + 1} von={ticketQr.length} />)}
           </>
         )}
         <hr />

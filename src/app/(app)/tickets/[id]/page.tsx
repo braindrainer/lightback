@@ -7,8 +7,8 @@ import { stornoMoeglich } from '@/lib/orders';
 import { sitzName, TICKET_UST, type Preise } from '@/lib/saal';
 import { platzStatus } from '@/lib/seats';
 import Umsetzen from '@/components/vorort/Umsetzen';
-import { qrInhalt, qrSvg } from '@/lib/tickets';
 import MiniSaalplan from '@/components/MiniSaalplan';
+import TicketKarte from '@/components/tickets/TicketKarte';
 import { Money, PageHeader, StatusPill } from '@/components/ui';
 import { Verlauf } from '@/components/Verlauf';
 import { AktionKnopf, StornoDialog } from '@/components/verkauf/BestellungAktionen';
@@ -36,7 +36,6 @@ export default async function Ticket({ params }: { params: Promise<{ id: string 
   if (!t) notFound();
   const scans = await db.checkIn.findMany({ where: { OR: [{ ticketId: t.id }, { code: t.code }] }, orderBy: { createdAt: 'asc' } });
   const benutzer = new Map((await db.user.findMany({ where: { id: { in: [...new Set(scans.map((s) => s.userId).filter((x): x is string => !!x))] } }, select: { id: true, name: true } })).map((x) => [x.id, x.name]));
-  const svg = await qrSvg(qrInhalt(t.code, t.showId));
   const o = t.order;
   const c = o.customer;
   const netto = Math.round(t.priceCents / (1 + t.vatRate / 100));
@@ -58,13 +57,7 @@ export default async function Ticket({ params }: { params: Promise<{ id: string 
       </PageHeader>
 
       <div className="mb-6 grid gap-6 lg:grid-cols-[minmax(0,320px)_1fr]">
-        <section className="card grid content-start justify-items-center gap-3 p-5" aria-labelledby="h-qr">
-          <h2 id="h-qr" className="h2 justify-self-start">QR-Code</h2>
-          <div role="img" aria-label={`QR-Code für Ticket ${t.code}`} className={`w-full max-w-[280px] ${t.status === 'storniert' ? 'opacity-30' : ''}`} dangerouslySetInnerHTML={{ __html: svg.replace('<svg ', '<svg aria-hidden="true" focusable="false" width="100%" ') }} />
-          <p className="font-mono text-2xl font-semibold tracking-[0.15em]">{t.code}</p>
-          {t.status === 'storniert' && <p className="rounded-lg bg-red-50 px-3 py-1.5 text-sm font-semibold text-neg">Storniert – berechtigt nicht zum Einlass</p>}
-          {t.status === 'eingelassen' && <p className="rounded-lg bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-900">Bereits eingelassen{t.checkedInAt ? ` am ${fmtDatumZeit(t.checkedInAt)}` : ''}</p>}
-        </section>
+        <TicketKarte ticketId={t.id} orderId={t.orderId} />
 
         <div className="grid content-start gap-6">
           <section className="card p-5" aria-labelledby="h-daten">
