@@ -24,7 +24,11 @@ function ton(freq: number, start: number, dauer: number, typ: OscillatorType = '
   o.stop(t + dauer + 0.02);
 }
 
-export function rueckmeldung(ok: boolean, hinweis = false) {
+export function rueckmeldung(ok: boolean, hinweis = false, einst: { ton: boolean; vibration: boolean } = { ton: true, vibration: true }) {
+  if (einst.vibration) {
+    try { navigator.vibrate?.(ok ? (hinweis ? [80, 60, 80] : 80) : [250, 100, 250]); } catch { /* nicht unterstützt */ }
+  }
+  if (!einst.ton) return;
   if (ok) {
     ton(1046, 0, 0.12);
     ton(hinweis ? 784 : 1568, 0.14, 0.16);
@@ -32,5 +36,4 @@ export function rueckmeldung(ok: boolean, hinweis = false) {
     ton(196, 0, 0.5, 'square');
     ton(165, 0.55, 0.4, 'square');
   }
-  try { navigator.vibrate?.(ok ? (hinweis ? [80, 60, 80] : 80) : [250, 100, 250]); } catch { /* nicht unterstützt */ }
 }

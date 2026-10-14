@@ -1,7 +1,7 @@
 // Service Worker der Einlass-App: App-Hülle und Next-Bundles cachen, damit der Scanner auch ohne Netz startet.
 // API-Aufrufe gehen immer ans Netz – den Offline-Fall (Codeliste, Warteschlange) regelt die App selbst.
-const CACHE = 'loc-einlass-v1';
-const HUELLE = ['/einlass', '/manifest-einlass.webmanifest', '/icons/vorort-192.png', '/icons/vorort-512.png', '/icons/vorort.svg'];
+const CACHE = 'loc-einlass-v2';
+const HUELLE = ['/einlass', '/manifest-einlass.webmanifest', '/manifest-lightapp.webmanifest', '/icons/vorort-192.png', '/icons/vorort-512.png', '/icons/vorort.svg'];
 
 const brauchbar = (r) => r && r.ok && !r.redirected && r.type === 'basic';
 

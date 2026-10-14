@@ -27,7 +27,7 @@ export function useOnline(): [boolean, (v: boolean) => void] {
 
 export function OnlineAnzeige({ online, dunkel = false }: { online: boolean; dunkel?: boolean }) {
   return (
-    <span role="status" className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${online ? (dunkel ? 'bg-emerald-900 text-emerald-100' : 'bg-emerald-50 text-emerald-900') : 'bg-amber-400 text-black'}`}>
+    <span role="status" className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${online ? (dunkel ? 'bg-emerald-900 text-emerald-100' : 'bg-emerald-50 text-emerald-900') : 'bg-amber-400 text-black'}`}>
       <span aria-hidden="true" className={`size-2 rounded-full ${online ? 'bg-emerald-400' : 'bg-black'}`} />
       {online ? 'Online' : 'Offline'}
     </span>
