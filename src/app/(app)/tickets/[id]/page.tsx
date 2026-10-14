@@ -9,7 +9,7 @@ import { platzStatus } from '@/lib/seats';
 import Umsetzen from '@/components/vorort/Umsetzen';
 import MiniSaalplan from '@/components/MiniSaalplan';
 import TicketKarte from '@/components/tickets/TicketKarte';
-import { Money, PageHeader, StatusPill } from '@/components/ui';
+import { Abschnitt, DetailKopf, Empty, Feldliste, Icon, Money, StatusPill } from '@/components/ui';
 import { Verlauf } from '@/components/Verlauf';
 import { AktionKnopf, StornoDialog } from '@/components/verkauf/BestellungAktionen';
 import { AktionForm, Absenden } from '@/components/verkauf/form';
@@ -47,58 +47,65 @@ export default async function Ticket({ params }: { params: Promise<{ id: string 
 
   return (
     <>
-      <PageHeader title={`Ticket ${t.code}`} sub={<>{sitzName(t.seatId)} · {fmtDatum(t.show.startsAt)}, {fmtZeit(t.show.startsAt)} Uhr · Bestellung {leitung ? <Link href={`/bestellungen/${o.id}`} className="font-mono underline underline-offset-4">{o.number}</Link> : <span className="font-mono">{o.number}</span>}</>}>
-        <StatusPill status={t.status} />
-        <a href={`/tickets/${t.id}/druck`} target="_blank" rel="noopener" className="btn-secondary">Druckansicht<span className="sr-only"> (neues Fenster)</span></a>
-        {hat(u, 'leitung', 'kassa') && t.status !== 'storniert' && c?.email && <AktionKnopf action={ticketSenden.bind(null, t.id)}>Ticket erneut senden</AktionKnopf>}
-        {leitung && t.status === 'gueltig' && ['bezahlt', 'teilstorniert'].includes(o.status) && (
-          <StornoDialog einzeln action={stornoAktion.bind(null, o.id)} tickets={[ticketZeile]} fristAbgelaufen={fristAbgelaufen} darfFrist={leitung} />
-        )}
-      </PageHeader>
+      <DetailKopf
+        krumen={leitung ? [{ label: 'Verkauf' }, { label: 'Bestellungen', href: '/bestellungen' }, { label: o.number, href: `/bestellungen/${o.id}` }, { label: `Ticket ${t.code}` }] : [{ label: 'Ticket' }, { label: t.code }]}
+        titel={t.code} mono status={<StatusPill status={t.status} />}
+        untertitel={<>{sitzName(t.seatId)} · {fmtDatum(t.show.startsAt)}, {fmtZeit(t.show.startsAt)} Uhr · {t.show.title}</>}
+        aktionen={<>
+          <a href={`/tickets/${t.id}/druck`} target="_blank" rel="noopener" className="btn-secondary"><Icon name="druck" className="h-4 w-4" />Druckansicht<span className="sr-only"> (neues Fenster)</span></a>
+          {hat(u, 'leitung', 'kassa') && t.status !== 'storniert' && c?.email && <AktionKnopf leise action={ticketSenden.bind(null, t.id)}><Icon name="mail" className="h-4 w-4" />Ticket erneut senden</AktionKnopf>}
+          {leitung && t.status === 'gueltig' && ['bezahlt', 'teilstorniert'].includes(o.status) && (
+            <StornoDialog einzeln action={stornoAktion.bind(null, o.id)} tickets={[ticketZeile]} fristAbgelaufen={fristAbgelaufen} darfFrist={leitung} />
+          )}
+        </>}
+        fakten={[
+          { label: 'Platz', wert: sitzName(t.seatId) },
+          { label: 'Kategorie · Art', wert: `${KAT_NAME[t.kat] ?? t.kat} · ${ART_NAME[t.art] ?? t.art}` },
+          { label: 'Preis', wert: <Money cents={t.priceCents} /> },
+          { label: 'Einlass', wert: t.checkedInAt ? fmtDatumZeit(t.checkedInAt) : <span className="font-normal text-muted">noch nicht</span> },
+        ]}
+      />
 
-      <div className="mb-6 grid gap-6 lg:grid-cols-[minmax(0,320px)_1fr]">
+      <div className="mb-6 grid items-start gap-6 lg:grid-cols-[minmax(0,320px)_1fr]">
         <TicketKarte ticketId={t.id} orderId={t.orderId} />
 
-        <div className="grid content-start gap-6">
-          <section className="card p-5" aria-labelledby="h-daten">
-            <h2 id="h-daten" className="h2 mb-3">Ticket</h2>
-            <dl className="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-[auto_1fr]">
-              <dt className="text-muted">Platz</dt><dd className="font-semibold">{sitzName(t.seatId)}</dd>
-              <dt className="text-muted">Kategorie</dt><dd>{KAT_NAME[t.kat] ?? t.kat}</dd>
-              <dt className="text-muted">Ticketart</dt><dd>{ART_NAME[t.art] ?? t.art}</dd>
-              <dt className="text-muted">Preis</dt><dd><Money cents={t.priceCents} /> inkl. {t.vatRate} % USt (netto <Money cents={netto} />, USt <Money cents={t.priceCents - netto} />){t.vatRate !== TICKET_UST && ' – abweichender Satz'}</dd>
-              <dt className="text-muted">Vorstellung</dt><dd>{leitung ? <Link href={`/vorstellungen/${t.showId}`} className="underline underline-offset-4">{fmtDatumZeit(t.show.startsAt)} Uhr</Link> : `${fmtDatumZeit(t.show.startsAt)} Uhr`} · {t.show.title} <StatusPill status={t.show.status} /></dd>
-              <dt className="text-muted">Status</dt><dd><StatusPill status={t.status} />{t.checkedInAt && <span className="ml-2">am {fmtDatumZeit(t.checkedInAt)}{t.checkedInBy ? ` von ${t.checkedInBy}` : ''}</span>}</dd>
-              <dt className="text-muted">Bestellung</dt><dd>{leitung ? <Link href={`/bestellungen/${o.id}`} className="font-mono underline underline-offset-4">{o.number}</Link> : <span className="font-mono">{o.number}</span>} · {KANAL_NAME[o.channel] ?? o.channel} · <StatusPill status={o.status} /></dd>
-              <dt className="text-muted">Kund:in</dt><dd>{c ? <>{leitung ? <Link href={`/kunden/${c.id}`} className="underline underline-offset-4">{`${c.firstName} ${c.lastName}`.trim() || '–'}</Link> : `${c.firstName} ${c.lastName}`.trim() || '–'}{c.email && <span className="text-muted"> · {c.email}</span>}</> : <span className="text-muted">anonym</span>}</dd>
-              <dt className="text-muted">Ausgestellt</dt><dd>{fmtDatumZeit(t.createdAt)}</dd>
-            </dl>
-          </section>
-          <section className="card p-5" aria-labelledby="h-plan">
-            <h2 id="h-plan" className="h2 mb-2">Lage im Saal</h2>
+        <div className="grid content-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,300px)]">
+          <Abschnitt id="h-daten" titel="Ticket">
+            <Feldliste spalten={2} felder={[
+              { label: 'Code', wert: t.code, mono: true, kopieren: t.code },
+              { label: 'Status', wert: <><StatusPill status={t.status} />{t.checkedInAt && <span className="block text-sm text-muted">am {fmtDatumZeit(t.checkedInAt)}{t.checkedInBy ? ` von ${t.checkedInBy}` : ''}</span>}</> },
+              { label: 'Preis', wert: <><Money cents={t.priceCents} /> <span className="text-sm text-muted">inkl. {t.vatRate} % USt (netto <Money cents={netto} />){t.vatRate !== TICKET_UST && ' – abweichender Satz'}</span></>, breit: true },
+              { label: 'Vorstellung', wert: <>{leitung ? <Link href={`/vorstellungen/${t.showId}`} className="link">{fmtDatumZeit(t.show.startsAt)} Uhr</Link> : `${fmtDatumZeit(t.show.startsAt)} Uhr`} <StatusPill status={t.show.status} /></>, breit: true },
+              { label: 'Bestellung', wert: <>{leitung ? <Link href={`/bestellungen/${o.id}`} className="link font-mono">{o.number}</Link> : <span className="font-mono">{o.number}</span>} <span className="text-sm text-muted">· {KANAL_NAME[o.channel] ?? o.channel}</span></> },
+              { label: 'Kund:in', wert: c ? (leitung ? <Link href={`/kunden/${c.id}`} className="link">{`${c.firstName} ${c.lastName}`.trim() || '–'}</Link> : `${c.firstName} ${c.lastName}`.trim() || '–') : <span className="text-muted">anonym</span> },
+              c?.email && { label: 'E-Mail', wert: c.email, kopieren: c.email, breit: true },
+              { label: 'Ausgestellt', wert: fmtDatumZeit(t.createdAt) },
+            ]} />
+          </Abschnitt>
+          <Abschnitt id="h-plan" titel="Lage im Saal">
             <MiniSaalplan seatId={t.seatId} className="mx-auto h-auto w-full max-w-[360px]" />
             <p className="mt-2 text-center text-sm">Markiert (roter Ring): <strong>{sitzName(t.seatId)}</strong></p>
-          </section>
+          </Abschnitt>
         </div>
       </div>
 
       <section className="card mb-6" aria-labelledby="h-einlass">
-        <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4"><h2 id="h-einlass" className="h2">Einlass</h2></div>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 pb-3 pt-4"><h2 id="h-einlass" className="h2">Einlass</h2></div>
         {scans.length ? (
-          <table className="table mt-3">
+          <table className="table rtab">
             <caption className="sr-only">Scans dieses Tickets, älteste zuerst</caption>
             <thead><tr><th scope="col">Zeit</th><th scope="col">Ergebnis</th><th scope="col">Person</th><th scope="col">Gerät</th><th scope="col">Erfassung</th></tr></thead>
             <tbody>{scans.map((s) => (
               <tr key={s.id}>
-                <td className="whitespace-nowrap">{fmtDatumZeit(s.createdAt)}</td>
-                <td>{ERGEBNIS[s.result] ?? s.result}{s.method === 'manuell' && <span className="block text-xs text-muted">ohne Scan (Namenssuche)</span>}{s.method === 'umbuchung' && <span className="block text-xs text-muted">nach Umbuchung am Einlass</span>}{s.reason && <span className="block text-xs">Grund: {s.reason}</span>}{s.showId && s.showId !== t.showId && <span className="block text-xs text-muted">bei anderer Vorstellung</span>}</td>
-                <td>{s.userId ? benutzer.get(s.userId) ?? s.userId : '–'}</td>
-                <td className="font-mono text-xs">{s.deviceId ?? '–'}</td>
-                <td>{s.offline ? 'offline, nachgereicht' : 'online'}</td>
+                <td className="rtab-kopf whitespace-nowrap">{fmtDatumZeit(s.createdAt)}</td>
+                <td data-label="Ergebnis">{ERGEBNIS[s.result] ?? s.result}{s.method === 'manuell' && <span className="block text-xs text-muted">ohne Scan (Namenssuche)</span>}{s.method === 'umbuchung' && <span className="block text-xs text-muted">nach Umbuchung am Einlass</span>}{s.reason && <span className="block text-xs">Grund: {s.reason}</span>}{s.showId && s.showId !== t.showId && <span className="block text-xs text-muted">bei anderer Vorstellung</span>}</td>
+                <td data-label="Person">{s.userId ? benutzer.get(s.userId) ?? s.userId : '–'}</td>
+                <td data-label="Gerät" className="font-mono text-xs">{s.deviceId ?? '–'}</td>
+                <td data-label="Erfassung">{s.offline ? 'offline, nachgereicht' : 'online'}</td>
               </tr>
             ))}</tbody>
           </table>
-        ) : <p className="px-5 pb-5 pt-3 text-sm text-muted">Noch nicht gescannt.</p>}
+        ) : <Empty icon="scan">Noch nicht gescannt.</Empty>}
         {leitung && t.status === 'eingelassen' && (
           <div className="border-t border-line p-5">
             <AktionForm action={einlassZuruecknehmenAktion.bind(null, t.id)} className="grid max-w-xl gap-3">

@@ -53,7 +53,7 @@ export default async function Statistik({ searchParams }: { searchParams: Promis
 
   return (
     <>
-      <PageHeader title="Statistik" sub={`${fmtDatum(`${z.von}T12:00:00Z`)} bis ${fmtDatum(`${z.bis}T12:00:00Z`)} · Verkauf nach Zahlungstag, Auslastung nach Vorstellungstag`}>
+      <PageHeader krumen={[{ label: 'Verkauf' }, { label: 'Statistik' }]} title="Statistik" sub={`${fmtDatum(`${z.von}T12:00:00Z`)} bis ${fmtDatum(`${z.bis}T12:00:00Z`)} · Verkauf nach Zahlungstag, Auslastung nach Vorstellungstag`}>
         <a href={csv} className="btn-secondary" download>Tagesreihe als CSV</a>
       </PageHeader>
 

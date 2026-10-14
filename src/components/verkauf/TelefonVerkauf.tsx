@@ -55,21 +55,22 @@ export default function TelefonVerkauf({ shows, startShow, darfFrei }: { shows: 
   return (
     <form onSubmit={absenden} className="grid gap-6" aria-label="Telefonverkauf">
       <section className="card p-5" aria-labelledby="t-plaetze">
-        <h2 id="t-plaetze" className="h2 mb-3">1. Vorstellung und Plätze</h2>
+        <h2 id="t-plaetze" className="h2 mb-4 flex items-center gap-2.5"><span aria-hidden="true" className="grid h-7 w-7 place-items-center rounded-full bg-nacht text-[13px] font-bold text-gold">1</span><span className="sr-only">1. </span>Vorstellung und Plätze</h2>
         <PlatzWahl shows={shows} startShow={startShow} darfFrei={darfFrei} onChange={setWahl} neuLaden={neuLaden} />
       </section>
 
+      <div className="grid items-start gap-6 xl:grid-cols-2">
       <section className="card grid gap-4 p-5" aria-labelledby="t-kunde">
-        <h2 id="t-kunde" className="h2">2. Kund:in</h2>
+        <h2 id="t-kunde" className="h2 flex items-center gap-2.5"><span aria-hidden="true" className="grid h-7 w-7 place-items-center rounded-full bg-nacht text-[13px] font-bold text-gold">2</span><span className="sr-only">2. </span>Kund:in</h2>
         <p className="text-sm text-muted">Bei Barverkauf ohne Namen bleibt die Bestellung anonym. Mit E-Mail-Adresse werden die Tickets per E-Mail gesendet.</p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{FELDER.map(feld)}</div>
+        <div className="grid gap-3 sm:grid-cols-2">{FELDER.map(feld)}</div>
         <label className="flex min-h-8 items-center gap-2 text-sm"><input type="checkbox" checked={newsletter} onChange={(x) => setNewsletter(x.target.checked)} className="h-4 w-4 accent-accent" />Möchte den Newsletter erhalten (Einwilligung liegt vor)</label>
         <label className="flex min-h-8 items-center gap-2 text-sm"><input type="checkbox" checked={rechnungsDaten} onChange={(x) => setRechnungsDaten(x.target.checked)} aria-controls="t-rechnung" aria-expanded={rechnungsDaten} className="h-4 w-4 accent-accent" />Rechnung an Firma / mit Adresse</label>
-        {rechnungsDaten && <div id="t-rechnung" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{RECHNUNG.map(feld)}</div>}
+        {rechnungsDaten && <div id="t-rechnung" className="grid gap-3 sm:grid-cols-2">{RECHNUNG.map(feld)}</div>}
       </section>
 
       <section className="card grid gap-4 p-5" aria-labelledby="t-zahlung">
-        <h2 id="t-zahlung" className="h2">3. Gutschein und Zahlung</h2>
+        <h2 id="t-zahlung" className="h2 flex items-center gap-2.5"><span aria-hidden="true" className="grid h-7 w-7 place-items-center rounded-full bg-nacht text-[13px] font-bold text-gold">3</span><span className="sr-only">3. </span>Gutschein und Zahlung</h2>
         <div className="flex flex-wrap items-end gap-3">
           <div><label htmlFor="t-code" className="label">Gutscheincode (optional)</label><input id="t-code" value={code} onChange={(x) => { setCode(x.target.value.toUpperCase()); setCodeE(undefined); }} className="input font-mono" autoComplete="off" /></div>
           <button type="button" className="btn-secondary" onClick={pruefen} disabled={!code || laeuft}>Gutschein prüfen</button>
@@ -88,8 +89,9 @@ export default function TelefonVerkauf({ shows, startShow, darfFrei }: { shows: 
         </fieldset>
         <div><label htmlFor="t-note" className="label">Notiz (intern)</label><textarea id="t-note" value={note} onChange={(x) => setNote(x.target.value)} rows={2} className="input" /></div>
       </section>
+      </div>
 
-      <section className="card sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 p-4 shadow-lg" aria-label="Zusammenfassung">
+      <section className="card sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 border-gold/60 p-4 !shadow-schwebend" aria-label="Zusammenfassung">
         <div className="text-sm" aria-live="polite">
           <p><strong>{wahl.seats.length} {wahl.seats.length === 1 ? 'Ticket' : 'Tickets'}</strong> · Summe <span className="num font-semibold">{formatEur(wahl.summe)}</span></p>
           {rest > 0 && <p className="text-muted">Gutschein −{formatEur(rest)} · zu zahlen <span className="num font-semibold text-ink">{formatEur(wahl.summe - rest)}</span></p>}

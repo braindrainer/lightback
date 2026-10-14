@@ -6,7 +6,7 @@ import { Icon } from './icons';
 import { Kopieren, Menue, type MenueEintrag } from './ui-client';
 
 export { Icon } from './icons';
-export { Bestaetigen, Drawer, Drawer as Seitenleiste, Kopieren, Menue, Modal, toast, ToastBereich, type MenueEintrag } from './ui-client';
+export { Bestaetigen, Drawer, Drawer as Seitenleiste, DrawerKnopf, Kopieren, Menue, Modal, toast, ToastBereich, type MenueEintrag } from './ui-client';
 
 export function Money({ cents, className = '', colored = false }: { cents: number; className?: string; colored?: boolean }) {
   const color = colored ? (cents > 0 ? 'text-pos' : cents < 0 ? 'text-neg' : '') : '';
@@ -76,9 +76,9 @@ export function DetailKopf({ krumen, titel, mono, status, untertitel, fakten, ak
         )}
       </div>
       {fakten && fakten.length > 0 && (
-        <dl className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line shadow-karte sm:grid-cols-3 lg:flex">
+        <dl className="mt-5 grid grid-cols-2 overflow-hidden rounded-xl border border-line bg-card shadow-karte sm:grid-cols-3 lg:flex">
           {fakten.map((f, i) => (
-            <div key={i} className="bg-card px-4 py-3 lg:min-w-0 lg:flex-1">
+            <div key={i} className="px-4 py-3 shadow-[1px_1px_0_0_var(--color-line-soft)] lg:min-w-0 lg:flex-1">
               <dt className="text-xs font-medium text-muted">{f.label}</dt>
               <dd className="mt-0.5 text-[15px] font-semibold">{f.wert}</dd>
             </div>

@@ -63,7 +63,7 @@ export default async function Einstellungen() {
   const app = (process.env.APP_ORIGIN ?? 'https://lightback.skillful.at').replace(/\/$/, '');
   return (
     <>
-      <PageHeader title="Einstellungen" sub="Nur für die Administration" />
+      <PageHeader krumen={[{ label: 'System' }, { label: 'Einstellungen' }]} title="Einstellungen" sub="Firmendaten, Nummernkreise, Mailversand und Zahlungsanbieter – nur für die Administration." />
       <nav aria-label="Abschnitte" className="mb-5 flex flex-wrap gap-2">
         {ABSCHNITTE.map(([id, l]) => <a key={id} href={`#${id}`} className="btn-secondary btn-sm">{l}</a>)}
       </nav>

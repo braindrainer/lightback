@@ -11,8 +11,13 @@ Prisma 6 + PostgreSQL 18, Tailwind v4. Live: https://lightback.skillful.at (Dock
   Rollen: admin (alles), leitung, buchhaltung, kassa, einlass.
 - Wichtige Aktionen protokollieren: `audit(user, 'aktion', 'entity', id, daten, { vorher, nachher })` bzw. `protokoll({...})` aus `src/lib/audit.ts`
   (Details siehe „Revisionssicheres Protokoll“). Geänderte Felder mit `aenderung(alt, neu)`, Geheimnisse nie protokollieren (`maskieren`).
-- UI: Klassen aus `src/app/globals.css` (`card`, `btn-primary`, `btn-gold`, `btn-secondary`, `btn-danger`, `input`, `label`, `table`, `pill`, `h1`, `h2`, `tabbar`)
-  und Komponenten aus `src/components/ui.tsx` (`PageHeader`, `Money`, `StatusPill`, `Stat`, `Empty`).
+- UI: Klassen aus `src/app/globals.css` (`card`, `btn-primary`, `btn-gold`, `btn-secondary`, `btn-danger`, `btn-ghost`, `input`, `label`, `table`, `pill`, `chip`,
+  `titel` (Seitentitel in Cormorant), `h2`, `eyebrow`, `link`, `tabbar`; `rtab` = Tabelle wird unter 768 px zu Karten, Spaltenname per `data-label`,
+  Kopfzelle `rtab-kopf`; `tabelle-frei` an der Karte = Tabellenkopf bleibt ab 1280 px stehen) und Komponenten aus `src/components/ui.tsx`:
+  `PageHeader` (mit `krumen`), `DetailKopf` (Brotkrumen, Status, Eckdaten, Aktionen, Menü „⋯“), `Kennzahlen`, `Feldliste` (kopierbare Werte), `Abschnitt`,
+  `LeerZustand`/`Empty`, `Hinweis`, `FilterChips`, `Fortschritt`, `Money`, `StatusPill`, dazu aus `ui-client.tsx` `Menue`, `Drawer`/`DrawerKnopf`, `Modal`,
+  `Bestaetigen`, `Kopieren` und `toast()` (Ausgabe über `ToastBereich` im Layout). Schrift: Figtree (UI), Cormorant nur für Titel und große Zahlen.
+  Seitenbreite max. 1400 px (Layout). Symbole: `Icon` aus `src/components/icons.tsx`.
 - Barrierefreiheit WCAG 2.2 AA: echte Überschriften, Labels an jedem Feld, Fehlermeldungen mit `role="alert"`,
   Tastaturbedienung, Kontrast ≥ 4,5:1, Ziele ≥ 24 px, keine reine Farbcodierung.
 - Server Components + Server Actions bevorzugen; Client-Komponenten nur wo Interaktion nötig ist.

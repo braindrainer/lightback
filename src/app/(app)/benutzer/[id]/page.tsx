@@ -1,10 +1,9 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { fmtDatumZeit } from '@/lib/dates';
 import { Formular } from '@/components/system/Formular';
-import { PageHeader } from '@/components/ui';
+import { DetailKopf, StatusPill } from '@/components/ui';
 import { benutzerSpeichern, passwortZuruecksetzen } from '../actions';
 import { RollenFelder } from '../RollenFelder';
 
@@ -18,11 +17,11 @@ export default async function Bearbeiten({ params }: { params: Promise<{ id: str
   const selbst = u.id === ich.id;
   return (
     <>
-      <PageHeader title={u.name} sub={`${u.username} · angelegt ${fmtDatumZeit(u.createdAt)} · letzte Anmeldung ${u.lastLoginAt ? fmtDatumZeit(u.lastLoginAt) : 'nie'}`}>
-        <Link href="/benutzer" className="btn-secondary">Zur Liste</Link>
-      </PageHeader>
-      <div className="grid max-w-3xl gap-5">
-        <Formular action={benutzerSpeichern} knopf="Speichern" className="card grid gap-4 p-5">
+      <DetailKopf krumen={[{ label: 'System' }, { label: 'Benutzer', href: '/benutzer' }, { label: u.name }]} titel={u.name}
+        status={u.active ? <StatusPill status="bezahlt" label="Aktiv" /> : <StatusPill status="storniert" label="Deaktiviert" />}
+        untertitel={<><span className="font-mono">{u.username}</span> · angelegt {fmtDatumZeit(u.createdAt)} · letzte Anmeldung {u.lastLoginAt ? fmtDatumZeit(u.lastLoginAt) : 'nie'}</>} />
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Formular action={benutzerSpeichern} knopf="Speichern" className="card grid gap-4 !overflow-visible p-5">
           <h2 className="h2">Daten und Rollen</h2>
           <input type="hidden" name="id" value={u.id} />
           <div className="grid gap-4 sm:grid-cols-2">

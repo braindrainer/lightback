@@ -8,7 +8,7 @@ import { KANAL_NAME, tagPlus, tagesreihe, zeitraumAus } from '@/lib/statistik';
 import { Balken } from '@/components/system/Balken';
 import { Auslastung, type ShowBalken } from '@/components/uebersicht/Auslastung';
 import { Ring } from '@/components/uebersicht/Ring';
-import { StatusPill } from '@/components/ui';
+import { Icon, StatusPill } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Übersicht' };
@@ -21,7 +21,7 @@ function Kennzahl({ label, wert, hinweis, vergleich }: { label: string; wert: st
   return (
     <div className="card p-4 md:p-5">
       <p className="text-xs font-medium text-muted">{label}</p>
-      <p className="num mt-1 text-2xl font-semibold tracking-tight">{wert}</p>
+      <p className="num mt-1.5 text-2xl font-semibold tracking-tight">{wert}</p>
       {vergleich && (
         <p className="mt-1 flex items-center gap-1.5 text-xs">
           <span className={`pill ${d > 0 ? 'bg-emerald-50 text-pos' : d < 0 ? 'bg-red-50 text-neg' : 'bg-gray-100 text-gray-700'}`}>{d > 0 ? '▲' : d < 0 ? '▼' : '='} {pct == null ? '–' : `${Math.abs(pct)} %`}</span>
@@ -109,8 +109,8 @@ export default async function Uebersicht() {
     <>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm text-muted">{datum}</p>
-          <h1 className="h1">Guten Tag, {u.name.split(' ')[0]}</h1>
+          <p className="eyebrow">{datum}</p>
+          <h1 className="titel">Guten Tag, {u.name.split(' ')[0]}</h1>
         </div>
         {schnell.length > 0 && (
           <nav aria-label="Schnellzugriff" className="flex flex-wrap gap-2">
@@ -120,8 +120,8 @@ export default async function Uebersicht() {
       </div>
 
       {hinweise.length > 0 && (
-        <section aria-labelledby="h-hinweise" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <h2 id="h-hinweise" className="text-sm font-semibold text-warn">Bitte ansehen</h2>
+        <section aria-labelledby="h-hinweise" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+          <h2 id="h-hinweise" className="flex items-center gap-2 text-sm font-semibold text-warn"><Icon name="warnung" className="h-4 w-4" />Bitte ansehen</h2>
           <ul className="mt-1.5 grid gap-1 text-sm">
             {hinweise.map((h) => <li key={h.href}><Link href={h.href} className="text-ink underline underline-offset-4 hover:text-accent-deep">{h.text}</Link></li>)}
           </ul>
@@ -198,17 +198,17 @@ export default async function Uebersicht() {
             <h2 id="h-letzte" className="h2">Letzte Bestellungen</h2>
             <Link href="/bestellungen" className="text-sm text-accent-deep underline underline-offset-4">Alle Bestellungen</Link>
           </div>
-          <table className="table mt-3">
+          <table className="table rtab mt-3">
             <thead><tr><th scope="col">Bestellung</th><th scope="col">Kund:in</th><th scope="col">Vorstellung</th><th scope="col">Kanal</th><th scope="col">Status</th><th scope="col" className="text-right">Betrag</th></tr></thead>
             <tbody>
               {letzte.map((o) => (
                 <tr key={o.id}>
-                  <td><Link href={`/bestellungen/${o.id}`} className="font-medium underline-offset-4 hover:underline">{o.number}</Link><div className="text-xs text-muted">{fmtDatumZeit(o.createdAt)}</div></td>
-                  <td>{o.customer ? `${o.customer.firstName} ${o.customer.lastName}` : <span className="text-muted">–</span>}</td>
-                  <td className="whitespace-nowrap">{fmtTag(o.show.startsAt)}, {fmtZeit(o.show.startsAt)}<div className="text-xs text-muted">{o._count.tickets} Tickets</div></td>
-                  <td>{KANAL_NAME[o.channel] ?? o.channel}</td>
-                  <td><StatusPill status={o.status} /></td>
-                  <td className="num text-right">{formatEur(o.totalCents)}</td>
+                  <td className="rtab-kopf"><Link href={`/bestellungen/${o.id}`} className="font-mono text-[13px] font-semibold underline-offset-4 hover:underline">{o.number}</Link><div className="text-xs text-muted">{fmtDatumZeit(o.createdAt)}</div></td>
+                  <td data-label="Kund:in">{o.customer ? `${o.customer.firstName} ${o.customer.lastName}` : <span className="text-muted">–</span>}</td>
+                  <td data-label="Vorstellung" className="whitespace-nowrap"><span>{fmtTag(o.show.startsAt)}, {fmtZeit(o.show.startsAt)}<span className="block text-xs text-muted">{o._count.tickets} Tickets</span></span></td>
+                  <td data-label="Kanal">{KANAL_NAME[o.channel] ?? o.channel}</td>
+                  <td data-label="Status"><StatusPill status={o.status} /></td>
+                  <td data-label="Betrag" className="num text-right">{formatEur(o.totalCents)}</td>
                 </tr>
               ))}
             </tbody>

@@ -7,7 +7,7 @@ import { fmtDatumZeit, fmtTag, fmtZeit, wienTag } from '@/lib/dates';
 import { freikartenStand, GAST_GRUENDE, GAST_MAX, gaesteListe, nachGrund } from '@/lib/gaeste';
 import { sitzName } from '@/lib/saal';
 import { platzStatus } from '@/lib/seats';
-import { Empty, PageHeader, StatusPill } from '@/components/ui';
+import { Abschnitt, Empty, Hinweis, Icon, Kennzahlen, PageHeader, StatusPill } from '@/components/ui';
 import { GastFormular, GastStornoDialog, ImportFormular, KontingentFormular, type GastDaten } from '@/components/verkauf/Gaeste';
 import type { Ergebnis } from '@/components/verkauf/ergebnis';
 import { gaesteImportAktion, gastAnlegenAktion, gastStornierenAktion, kontingentAktion } from '../../ablauf-actions';
@@ -31,41 +31,41 @@ export default async function Gaeste({ params }: { params: Promise<{ id: string 
   const gruende = nachGrund(aktiv);
   return (
     <>
-      <PageHeader title={`Gästeliste ${titel}`} sub={<><Link href={`/vorstellungen/${id}`} className="underline underline-offset-4">Zur Vorstellung</Link> · {aktiv.length} Gäste, {stand.vergeben} Freikarten{stand.limit != null ? ` von ${stand.limit} (Kontingent)` : ''}</>}>
-        <a href={`/vorstellungen/${id}/gaeste/druck`} target="_blank" rel="noopener" className="btn-secondary">Liste drucken (A4)<span className="sr-only"> – neues Fenster</span></a>
+      <PageHeader title="Gästeliste" krumen={[{ label: 'Verkauf' }, { label: 'Vorstellungen', href: '/vorstellungen' }, { label: titel, href: `/vorstellungen/${id}` }, { label: 'Gästeliste' }]}
+        sub={<>Freikarten für die Vorstellung <Link href={`/vorstellungen/${id}`} className="link">{titel}</Link></>}>
+        <a href={`/vorstellungen/${id}/gaeste/druck`} target="_blank" rel="noopener" className="btn-secondary"><Icon name="druck" className="h-4 w-4" />Liste drucken (A4)<span className="sr-only"> – neues Fenster</span></a>
       </PageHeader>
-      {stand.rest != null && stand.rest < 0 && <p role="alert" className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-warn">Das Freikarten-Kontingent ist um {-stand.rest} überschritten.</p>}
+      {stand.rest != null && stand.rest < 0 && <Hinweis art="warn" rolle="alert">Das Freikarten-Kontingent ist um {-stand.rest} überschritten.</Hinweis>}
+      <Kennzahlen items={[
+        { label: 'Gäste', wert: aktiv.length, icon: 'kunden' },
+        { label: 'Freikarten', wert: stand.vergeben, hinweis: stand.limit != null ? `von ${stand.limit} (Kontingent)` : 'ohne Kontingent', icon: 'ticket' },
+        { label: 'Noch frei im Kontingent', wert: stand.rest ?? '–', ton: stand.rest != null && stand.rest < 0 ? 'neg' : undefined },
+        { label: 'Eingelassen', wert: aktiv.reduce((n, g) => n + g.aktiv.filter((t) => t.status === 'eingelassen').length, 0), icon: 'scan' },
+      ]} />
 
-      <div className="mb-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="mb-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         {offen ? (
-          <section className="card p-5" aria-labelledby="h-neu">
-            <h2 id="h-neu" className="h2 mb-3">Gast hinzufügen</h2>
+          <Abschnitt id="h-neu" titel="Gast hinzufügen">
             <GastFormular gruende={GAST_GRUENDE} status={status} max={GAST_MAX} action={gastAnlegenAktion.bind(null, id) as (d: GastDaten) => Promise<Ergebnis>} />
-          </section>
-        ) : <p className="card p-5 text-sm">Die Vorstellung ist {show.status === 'abgesagt' ? 'abgesagt' : 'vorbei'} – keine neuen Gäste mehr.</p>}
+          </Abschnitt>
+        ) : <div className="card"><Empty icon="schloss" titel="Keine neuen Gäste mehr">Die Vorstellung ist {show.status === 'abgesagt' ? 'abgesagt' : 'vorbei'}.</Empty></div>}
         <div className="grid content-start gap-6">
-          <section className="card p-5" aria-labelledby="h-kont">
-            <h2 id="h-kont" className="h2 mb-3">Kontingent</h2>
-            <KontingentFormular action={kontingentAktion.bind(null, id)} limit={show.freikartenLimit} />
-          </section>
-          <section className="card p-5" aria-labelledby="h-gruende">
-            <h2 id="h-gruende" className="h2 mb-2">Freikarten nach Grund</h2>
-            {gruende.length ? <ul className="grid gap-1 text-sm">{gruende.map(([g, n]) => <li key={g} className="flex justify-between gap-2"><span>{g}</span><span className="num font-semibold">{n}</span></li>)}</ul> : <p className="text-sm text-muted">Noch keine.</p>}
-          </section>
+          <Abschnitt id="h-kont" titel="Kontingent"><KontingentFormular action={kontingentAktion.bind(null, id)} limit={show.freikartenLimit} /></Abschnitt>
+          <Abschnitt id="h-gruende" titel="Freikarten nach Grund">
+            {gruende.length ? <ul className="grid gap-1.5 text-sm">{gruende.map(([g, n]) => <li key={g} className="flex justify-between gap-2"><span>{g}</span><span className="num font-semibold">{n}</span></li>)}</ul> : <p className="text-sm text-muted">Noch keine.</p>}
+          </Abschnitt>
         </div>
       </div>
 
       {offen && (
-        <section className="card mb-6 p-5" aria-labelledby="h-import">
-          <h2 id="h-import" className="h2 mb-3">Liste importieren</h2>
+        <Abschnitt id="h-import" titel="Liste importieren" className="mb-6" beschreibung="Mehrere Gäste auf einmal, z. B. aus einer Tabelle.">
           <ImportFormular action={gaesteImportAktion.bind(null, id)} />
-        </section>
+        </Abschnitt>
       )}
 
-      <section className="card" aria-labelledby="h-liste">
-        <h2 id="h-liste" className="h2 px-5 pt-4">Gäste ({liste.length})</h2>
+      <Abschnitt id="h-liste" titel={`Gäste (${liste.length})`} flush>
         {liste.length ? (
-          <table className="table mt-3">
+          <table className="table rtab">
             <caption className="sr-only">Gäste nach Nachname</caption>
             <thead><tr><th scope="col">Name</th><th scope="col" className="text-right">Karten</th><th scope="col">Plätze</th><th scope="col">Grund</th><th scope="col">Zustellung</th><th scope="col">Einlass</th><th scope="col"><span className="sr-only">Aktionen</span></th></tr></thead>
             <tbody>
@@ -75,20 +75,20 @@ export default async function Gaeste({ params }: { params: Promise<{ id: string 
                 const ein = g.aktiv.filter((t) => t.status === 'eingelassen').length;
                 return (
                   <tr key={g.id} className={g.status === 'storniert' ? 'text-muted' : ''}>
-                    <td><Link href={`/bestellungen/${g.id}`} className="font-medium underline-offset-4 hover:underline">{name}</Link>{c?.company && <span className="block text-xs text-muted">{c.company}</span>}{c?.email && <span className="block text-xs text-muted">{c.email}</span>}</td>
-                    <td className="num text-right">{g.aktiv.length}{g.gast.begleitung ? <span className="block text-xs text-muted">inkl. +1</span> : null}</td>
-                    <td className="text-sm">{g.aktiv.map((t) => sitzName(t.seatId)).join(' · ') || '–'}</td>
-                    <td>{g.gast.grund}{g.gast.notiz && <span className="block text-xs text-muted">{g.gast.notiz}</span>}</td>
-                    <td className="text-sm">{[g.gast.mail ? 'E-Mail' : '', g.gast.hinterlegt ? (g.gast.abgeholtAm ? `Kassa, abgeholt ${fmtZeit(new Date(g.gast.abgeholtAm))}` : 'Kassa, offen') : ''].filter(Boolean).join(' · ')}</td>
-                    <td>{g.status === 'storniert' ? <StatusPill status="storniert" /> : `${ein} / ${g.aktiv.length}`}</td>
-                    <td>{g.status !== 'storniert' && offen && <GastStornoDialog action={gastStornierenAktion.bind(null, id, g.id)} name={name} />}</td>
+                    <td className="rtab-kopf"><Link href={`/bestellungen/${g.id}`} className="font-semibold underline-offset-4 hover:underline">{name}</Link>{c?.company && <span className="block text-xs text-muted">{c.company}</span>}{c?.email && <span className="block text-xs text-muted">{c.email}</span>}</td>
+                    <td data-label="Karten" className="num text-right">{g.aktiv.length}{g.gast.begleitung ? <span className="block text-xs text-muted">inkl. +1</span> : null}</td>
+                    <td data-label="Plätze" className="text-sm">{g.aktiv.map((t) => sitzName(t.seatId)).join(' · ') || '–'}</td>
+                    <td data-label="Grund">{g.gast.grund}{g.gast.notiz && <span className="block text-xs text-muted">{g.gast.notiz}</span>}</td>
+                    <td data-label="Zustellung" className="text-sm">{[g.gast.mail ? 'E-Mail' : '', g.gast.hinterlegt ? (g.gast.abgeholtAm ? `Kassa, abgeholt ${fmtZeit(new Date(g.gast.abgeholtAm))}` : 'Kassa, offen') : ''].filter(Boolean).join(' · ') || '–'}</td>
+                    <td data-label="Einlass">{g.status === 'storniert' ? <StatusPill status="storniert" /> : <span className="num">{ein} / {g.aktiv.length}</span>}</td>
+                    <td className={g.status !== 'storniert' && offen ? 'text-right' : 'rtab-leer'}>{g.status !== 'storniert' && offen && <GastStornoDialog action={gastStornierenAktion.bind(null, id, g.id)} name={name} />}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        ) : <Empty>Noch keine Gäste auf der Liste.</Empty>}
-      </section>
+        ) : <Empty icon="stern" titel="Noch keine Gäste auf der Liste">Presse, Sponsoren oder Künstler:innen oben eintragen oder als Liste importieren.</Empty>}
+      </Abschnitt>
     </>
   );
 }

@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { fmtDatum, fmtDatumZeit, wienZuUtc } from '@/lib/dates';
 import { ANBIETER, anbieterVonKonto, TRANSIT_KONTEN } from '@/lib/finanzen/buchhaltung';
+import { ZAHLART_NAME } from '@/components/verkauf/texte';
 import { centZuEingabe, heute, tag } from '@/lib/finanzen/zeitraum';
 import { TRANSIT } from '@/lib/ledger';
 import { Formular, Senden } from '@/components/finanzen/Formular';
@@ -52,14 +53,14 @@ export default async function Zahlungen({ searchParams }: { searchParams: Promis
   const vorschlagGebuehr = offeneAuszahlung.reduce((s, p) => s + p.feeCents, 0);
   return (
     <>
-      <PageHeader title="Zahlungen" sub="Zahlungseingänge über die Anbieter, Auszahlungen auf das Bankkonto und Erstattungen" />
+      <PageHeader krumen={[{ label: 'Finanzen' }, { label: 'Zahlungen' }]} title="Zahlungen" sub="Zahlungseingänge über die Anbieter, Auszahlungen auf das Bankkonto und Erstattungen" />
       <section aria-labelledby="h-transit" className="mb-6">
         <h2 id="h-transit" className="h2 mb-2">Geldtransit (noch nicht ausgezahlt)</h2>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           {konten.map((k) => (
             <div key={k.id} className="card p-4">
               <p className="text-xs text-muted">{k.number} {k.name}</p>
-              <p className="mt-1 text-2xl font-semibold"><Money cents={saldo.get(k.id) ?? 0} /></p>
+              <p className="mt-1 text-xl font-semibold sm:text-2xl"><Money cents={saldo.get(k.id) ?? 0} /></p>
               <Link href={`/buchhaltung/konten/${k.number}`} className="text-xs underline underline-offset-4">Kontenblatt<span className="sr-only"> {k.number}</span></Link>
             </div>
           ))}
@@ -122,7 +123,7 @@ export default async function Zahlungen({ searchParams }: { searchParams: Promis
               <tr key={p.id}>
                 <td className="whitespace-nowrap">{fmtDatumZeit(p.paidAt ?? p.createdAt)}</td>
                 <td>{p.order ? <Link href={`/bestellungen/${p.order.id}`} className="underline underline-offset-4">{p.order.number}</Link> : '–'}<div className="max-w-40 truncate text-xs text-muted" title={p.providerRef ?? ''}>{p.providerRef}</div></td>
-                <td>{ANBIETER[p.provider] ?? p.provider}</td>
+                <td>{ANBIETER[p.provider] ?? ZAHLART_NAME[p.provider] ?? p.provider}</td>
                 <td><StatusPill status={p.status} /></td>
                 <td className="text-right"><Money cents={p.amountCents} /></td>
                 <td className="text-right"><Money cents={p.feeCents} /></td>

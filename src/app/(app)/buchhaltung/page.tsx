@@ -69,8 +69,9 @@ export default async function Journal({ searchParams }: { searchParams: Promise<
                     </details>
                   )}
                 </div>
-                <table className="table mt-2">
+                <table className="table mt-2 lg:table-fixed">
                   <caption className="sr-only">Zeilen der Buchung Nr. {e.number}</caption>
+                  <colgroup><col className="w-24" /><col /><col className="w-36" /><col className="w-36" /><col className="w-48" /></colgroup>
                   <thead><tr><th>Konto</th><th>Bezeichnung</th><th className="text-right">Soll</th><th className="text-right">Haben</th><th>Steuer</th></tr></thead>
                   <tbody>
                     {e.lines.map((l) => (

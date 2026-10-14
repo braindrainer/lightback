@@ -47,7 +47,7 @@ export default async function Rechnungen({ searchParams }: { searchParams: Sp })
   const jahre = Array.from({ length: 4 }, (_, i) => Number(heute().slice(0, 4)) + 1 - i);
   return (
     <>
-      <PageHeader title="Rechnungen" sub="Rechnungen aus Bestellungen und manuelle Rechnungen an Firmen">
+      <PageHeader krumen={[{ label: 'Finanzen' }, { label: 'Rechnungen' }]} title="Rechnungen" sub="Rechnungen aus Bestellungen und manuelle Rechnungen an Firmen">
         <Link href="/rechnungen/neu" className="btn-primary">Neue Rechnung</Link>
       </PageHeader>
       <form className="card mb-4 flex flex-wrap items-end gap-3 p-4" role="search" aria-label="Rechnungen filtern">

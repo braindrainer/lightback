@@ -23,7 +23,7 @@ export default async function BuchhaltungLayout({ children }: { children: React.
   const s = await getSettings();
   return (
     <>
-      <PageHeader title="Buchhaltung" sub={<>{HINWEIS_VORSCHLAG}{s.lockedUntil && <> Festgeschrieben bis {fmtBuchDatum(s.lockedUntil)}.</>}</>} />
+      <PageHeader krumen={[{ label: 'Finanzen' }, { label: 'Buchhaltung' }]} title="Buchhaltung" sub={<>{HINWEIS_VORSCHLAG}{s.lockedUntil && <> Festgeschrieben bis {fmtBuchDatum(s.lockedUntil)}.</>}</>} />
       <Tabs label="Bereiche der Buchhaltung" tabs={TABS} />
       <Meldungsbereich>{children}</Meldungsbereich>
     </>

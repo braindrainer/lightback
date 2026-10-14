@@ -3,7 +3,7 @@ import { requireRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { fmtDatumZeit } from '@/lib/dates';
 import { formatEur } from '@/lib/money';
-import { Empty, PageHeader } from '@/components/ui';
+import { Empty, Icon, PageHeader, StatusPill } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Partner & API' };
@@ -20,31 +20,31 @@ export default async function PartnerListe() {
   const m = new Map(monat.map((r) => [r.id, r.tickets]));
   return (
     <>
-      <PageHeader title="Partner & API" sub="Vertriebspartner mit eigenem API-Zugang">
+      <PageHeader title="Partner & API" krumen={[{ label: 'Verkauf' }, { label: 'Partner & API' }]} sub="Vertriebspartner mit eigenem API-Zugang, Provision und Kontingent.">
         <Link href="/api-doku" className="btn-secondary">API-Dokumentation</Link>
-        <Link href="/partner/neu" className="btn-primary">Partner anlegen</Link>
+        <Link href="/partner/neu" className="btn-primary"><Icon name="plus" className="h-4 w-4" />Partner anlegen</Link>
       </PageHeader>
-      <div className="card">
+      <div className="card tabelle-frei">
         {partner.length ? (
-          <table className="table">
+          <table className="table rtab">
             <thead><tr><th scope="col">Partner</th><th scope="col">Schlüssel</th><th scope="col" className="text-right">Provision</th><th scope="col">Kategorien</th><th scope="col" className="text-right">Kontingent</th><th scope="col" className="text-right">Tickets 30 Tage</th><th scope="col" className="text-right">Umsatz gesamt</th><th scope="col">Zuletzt aktiv</th><th scope="col">Status</th></tr></thead>
             <tbody>
               {partner.map((p) => (
                 <tr key={p.id}>
-                  <td><Link href={`/partner/${p.id}`} className="font-medium underline underline-offset-4">{p.name}</Link>{p.contactEmail && <p className="text-xs text-muted">{p.contactEmail}</p>}</td>
-                  <td className="font-mono text-[13px]">{p.apiKeyPrefix}…</td>
-                  <td className="num text-right">{p.commissionPct} %</td>
-                  <td>{p.categories.map((k) => (k === 'R' ? 'Rollstuhl' : k)).join(', ')}</td>
-                  <td className="num text-right">{p.quotaPerShow ?? '∞'}</td>
-                  <td className="num text-right">{m.get(p.id) ?? 0}</td>
-                  <td className="num text-right">{formatEur(g.get(p.id)?.umsatz ?? 0)}</td>
-                  <td className="whitespace-nowrap">{p.lastUsedAt ? fmtDatumZeit(p.lastUsedAt) : <span className="text-muted">nie</span>}</td>
-                  <td>{p.active ? <span className="pill bg-emerald-50 text-emerald-800">Aktiv</span> : <span className="pill bg-gray-100 text-gray-700">Deaktiviert</span>}</td>
+                  <td className="rtab-kopf"><Link href={`/partner/${p.id}`} className="font-semibold underline-offset-4 hover:underline">{p.name}</Link>{p.contactEmail && <span className="block text-xs text-muted">{p.contactEmail}</span>}</td>
+                  <td data-label="Schlüssel" className="font-mono text-[13px]">{p.apiKeyPrefix}…</td>
+                  <td data-label="Provision" className="num text-right">{p.commissionPct} %</td>
+                  <td data-label="Kategorien">{p.categories.map((k) => (k === 'R' ? 'Rollstuhl' : k)).join(', ')}</td>
+                  <td data-label="Kontingent" className="num text-right">{p.quotaPerShow ?? '∞'}</td>
+                  <td data-label="Tickets 30 Tage" className="num text-right">{m.get(p.id) ?? 0}</td>
+                  <td data-label="Umsatz gesamt" className="num text-right font-medium">{formatEur(g.get(p.id)?.umsatz ?? 0)}</td>
+                  <td data-label="Zuletzt aktiv" className="whitespace-nowrap">{p.lastUsedAt ? fmtDatumZeit(p.lastUsedAt) : <span className="text-muted">nie</span>}</td>
+                  <td data-label="Status">{p.active ? <StatusPill status="bezahlt" label="Aktiv" /> : <StatusPill status="storniert" label="Deaktiviert" />}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        ) : <Empty>Noch keine Partner. Legen Sie den ersten an, um einen API-Schlüssel zu erzeugen.</Empty>}
+        ) : <Empty icon="partner" titel="Noch keine Partner" aktion={<Link href="/partner/neu" className="btn-primary btn-sm">Partner anlegen</Link>}>Legen Sie den ersten Partner an, um einen API-Schlüssel zu erzeugen.</Empty>}
       </div>
     </>
   );

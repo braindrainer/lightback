@@ -5,8 +5,8 @@ import { Verlauf } from '@/components/Verlauf';
 import { db } from '@/lib/db';
 import { fmtDatumZeit, fmtTag, fmtZeit, wienTag } from '@/lib/dates';
 import { formatEur } from '@/lib/money';
-import { type Kat, type Preise } from '@/lib/saal';
-import { Empty, Money, PageHeader, StatusPill } from '@/components/ui';
+import { KAPAZITAET, type Kat, type Preise } from '@/lib/saal';
+import { Abschnitt, DetailKopf, DrawerKnopf, Empty, Hinweis, Icon, Kennzahlen, Money, StatusPill } from '@/components/ui';
 import { auslastungListe, KAT_KAPAZITAET, platzDaten } from '@/components/verkauf/daten';
 import PlatzVerwaltung from '@/components/verkauf/PlatzVerwaltung';
 import { AbsageDialog, BearbeitenFormular } from '@/components/verkauf/ShowAktionen';
@@ -25,8 +25,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: s ? `Vorstellung ${fmtDatumZeit(s.startsAt)}` : 'Vorstellung' };
 }
 
-function Kennzahl({ label, wert, hint }: { label: string; wert: React.ReactNode; hint?: string }) {
-  return <div className="card p-4"><p className="text-xs text-muted">{label}</p><p className="num mt-1 text-2xl font-semibold">{wert}</p>{hint && <p className="text-xs text-muted">{hint}</p>}</div>;
+function Ablauf({ label, wert, einheit, text, children }: { label: string; wert: React.ReactNode; einheit?: string; text: React.ReactNode; children?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col p-5">
+      <p className="text-xs font-medium text-muted">{label}</p>
+      <p className="mt-1 font-serif text-4xl font-semibold leading-none">{wert}{einheit && <span className="ml-1.5 font-sans text-sm font-normal text-muted">{einheit}</span>}</p>
+      <p className="mt-2 flex-1 text-xs text-muted">{text}</p>
+      {children && <div className="mt-3 text-sm">{children}</div>}
+    </div>
+  );
 }
 
 export default async function Vorstellung({ params }: { params: Promise<{ id: string }> }) {
@@ -54,140 +61,134 @@ export default async function Vorstellung({ params }: { params: Promise<{ id: st
   const titel = `${fmtTag(show.startsAt)} ${wienTag(show.startsAt).slice(0, 4)}, ${fmtZeit(show.startsAt)}`;
   const preise = show.prices as Preise;
   const abgesagt = show.status === 'abgesagt';
+  const quote = z.gesamt.verkauft ? Math.round((z.gesamt.eingelassen / z.gesamt.verkauft) * 100) : 0;
+  const auslastung = Math.round((z.gesamt.verkauft / KAPAZITAET) * 100);
   return (
     <>
-      <PageHeader title={`Vorstellung ${titel}`} sub={<>{show.title}{show.series && <> · Serie „{show.series.name}“</>} · <Link href="/vorstellungen" className="underline underline-offset-4">Alle Vorstellungen</Link></>}>
-        <StatusPill status={show.status} />
-        <Link href={`/vorstellungen/${id}/gaeste`} className="btn-secondary">Gästeliste (Freikarten)</Link>
-        <a href={`/vorstellungen/${id}/gaesteliste.csv`} className="btn-secondary" download>Besucherliste (CSV)</a>
-        {!abgesagt && show.status === 'verkauf' && show.startsAt > new Date() && <Link href={`/bestellungen/neu?show=${id}`} className="btn-gold">Tickets verkaufen</Link>}
-        <AbsageDialog action={vorstellungAbsagenAktion.bind(null, id)} titel={titel} bestellungen={offenAnzahl} versteckt={abgesagt} />
-      </PageHeader>
-      {abgesagt && <p role="status" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-900">Abgesagt{show.cancelReason ? `: ${show.cancelReason}` : ''}</p>}
-      {show.abgebrochenAt && <p role="status" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-900">Abgebrochen um {fmtZeit(show.abgebrochenAt)} Uhr{show.abbruchGrund ? `: ${show.abbruchGrund}` : ''}</p>}
+      <DetailKopf
+        krumen={[{ label: 'Verkauf' }, { label: 'Vorstellungen', href: '/vorstellungen' }, { label: titel }]}
+        titel={titel}
+        status={<StatusPill status={show.status} />}
+        untertitel={<>{show.title}{show.series && <> · Serie „{show.series.name}“</>} · {show.durationMin} Min. · Auslastung {auslastung} %</>}
+        aktionen={<>
+          {!abgesagt && show.status === 'verkauf' && show.startsAt > new Date() && <Link href={`/bestellungen/neu?show=${id}`} className="btn-gold"><Icon name="ticket" className="h-4 w-4" />Tickets verkaufen</Link>}
+          <Link href={`/vorstellungen/${id}/gaeste`} className="btn-secondary"><Icon name="stern" className="h-4 w-4" />Gästeliste</Link>
+          {!abgesagt && (
+            <DrawerKnopf knopf="Bearbeiten" icon="bearbeiten" titel="Vorstellung bearbeiten" untertitel={titel} breit>
+              <BearbeitenFormular action={vorstellungBearbeiten.bind(null, id)} werte={{ datum: wienTag(show.startsAt), zeit: fmtZeit(show.startsAt), status: show.status, notes: show.notes, titel: show.title, preise }} />
+            </DrawerKnopf>
+          )}
+          <AbsageDialog action={vorstellungAbsagenAktion.bind(null, id)} titel={titel} bestellungen={offenAnzahl} versteckt={abgesagt} />
+        </>}
+        menue={[
+          { label: 'Bestellungen dieser Vorstellung', href: `/bestellungen?show=${id}`, icon: 'liste' },
+          { label: 'Besucherliste (CSV)', href: `/vorstellungen/${id}/gaesteliste.csv`, icon: 'download' },
+          { label: 'Anwesenheitsliste drucken', href: `/vorstellungen/${id}/anwesenheit`, extern: true, icon: 'druck' },
+          { label: 'Gästeliste drucken (A4)', href: `/vorstellungen/${id}/gaeste/druck`, extern: true, icon: 'druck' },
+        ]}
+      />
+      {abgesagt && <Hinweis art="fehler" rolle="status" titel="Abgesagt">{show.cancelReason || 'Ohne Angabe eines Grundes.'}</Hinweis>}
+      {show.abgebrochenAt && <Hinweis art="fehler" rolle="status" titel={`Abgebrochen um ${fmtZeit(show.abgebrochenAt)} Uhr`}>{show.abbruchGrund || 'Ohne Angabe eines Grundes.'}</Hinweis>}
 
-      <section aria-labelledby="kennzahlen" className="mb-6">
-        <h2 id="kennzahlen" className="sr-only">Kennzahlen</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Kennzahl label="Verkauft (Tickets)" wert={z.gesamt.verkauft} />
-          <Kennzahl label="Reserviert (Warenkorb)" wert={anz('reserviert')} />
-          <Kennzahl label="Frei (Plätze)" wert={anz('frei')} />
-          <Kennzahl label="Gesperrt" wert={anz('gesperrt')} />
-          <Kennzahl label="Eingelassen" wert={z.gesamt.eingelassen} hint={z.gesamt.verkauft ? `${Math.round((z.gesamt.eingelassen / z.gesamt.verkauft) * 100)} % der Tickets` : undefined} />
-          <Kennzahl label="Umsatz (brutto)" wert={formatEur(z.gesamt.umsatz)} />
+      <Kennzahlen items={[
+        { label: 'Verkauft', wert: z.gesamt.verkauft, hinweis: `von ${KAPAZITAET} Plätzen · ${auslastung} %`, icon: 'ticket' },
+        { label: 'Frei', wert: anz('frei'), hinweis: 'Plätze im Saalplan', icon: 'sitz' },
+        { label: 'Reserviert', wert: anz('reserviert'), hinweis: 'im Warenkorb' },
+        { label: 'Gesperrt', wert: anz('gesperrt'), icon: 'schloss' },
+        { label: 'Eingelassen', wert: z.gesamt.eingelassen, hinweis: z.gesamt.verkauft ? `${quote} % der Tickets` : undefined, icon: 'scan' },
+        { label: 'Umsatz (brutto)', wert: formatEur(z.gesamt.umsatz), ton: 'gold', icon: 'euro' },
+      ]} />
+
+      <section className="card mb-6" aria-labelledby="ablauf">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-soft px-5 py-4">
+          <div><h2 id="ablauf" className="h2">Rund um die Vorstellung</h2><p className="text-sm text-muted">Einlass, offene Reservierungen und Gästeliste – siehe auch <Link href="/hilfe/vorstellung" className="link">Hilfe</Link>.</p></div>
+          {!abgesagt && (
+            <div className="flex flex-wrap gap-2">
+              <NachrichtDialog action={nachrichtAktion.bind(null, id)} empfaenger={empf.length} titel={titel} />
+              {/* immer rendern: nach dem Abbruch bleibt der offene Dialog mit seinem Ergebnis stehen */}
+              <AbbruchDialog action={abbruchAktion.bind(null, id)} titel={titel} bestellungen={offenAnzahl} versteckt={!abbruchMoeglich(show)} />
+            </div>
+          )}
+        </div>
+        <div className="grid divide-y divide-line-soft md:grid-cols-3 md:divide-x md:divide-y-0">
+          <Ablauf label="Im Saal (laut Einlass)" wert={imSaal.imSaal} einheit="Personen" text={`${imSaal.eingelassen} Tickets eingelassen, Rollstuhlplätze zählen mit Begleitperson`}>
+            <a href={`/vorstellungen/${id}/anwesenheit`} target="_blank" rel="noopener" className="link">Anwesenheitsliste drucken<span className="sr-only"> (neues Fenster)</span></a>
+          </Ablauf>
+          <Ablauf label="Offene Reservierungen (unbezahlt)" wert={reserv.plaetze} einheit="Plätze" text={reserv.bestellungen ? `${reserv.bestellungen} Bestellungen, verfallen um ${fmtZeit(reserv.verfallAm)} Uhr (${reserv.minuten} Min. vor Beginn) – dann frei für die Abendkasse` : 'Keine offenen Telefon-, Rechnungs- oder Zahlungslink-Reservierungen.'}>
+            {reserv.bestellungen > 0 && <Link href={`/bestellungen?show=${id}&status=offen`} className="link">Offene Bestellungen ansehen</Link>}
+          </Ablauf>
+          <Ablauf label="Freikarten (Gästeliste)" wert={<>{fk.vergeben}{fk.limit != null && <span className="font-sans text-sm font-normal text-muted"> von {fk.limit}</span>}</>} text={`${gaeste.length} Gäste${freiNachGrund.length ? ` · ${freiNachGrund.map(([g, n]) => `${g} ${n}`).join(', ')}` : ''}`}>
+            <Link href={`/vorstellungen/${id}/gaeste`} className="link">Gästeliste verwalten</Link>
+          </Ablauf>
         </div>
       </section>
 
-      <section className="card mb-6 p-5" aria-labelledby="ablauf">
-        <h2 id="ablauf" className="h2 mb-3">Rund um die Vorstellung</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          <div>
-            <p className="text-xs text-muted">Im Saal (laut Einlass)</p>
-            <p className="num text-3xl font-semibold">{imSaal.imSaal} <span className="text-base font-normal">Personen</span></p>
-            <p className="text-xs text-muted">{imSaal.eingelassen} Tickets eingelassen, Rollstuhlplätze zählen mit Begleitperson</p>
-            <a href={`/vorstellungen/${id}/anwesenheit`} target="_blank" rel="noopener" className="mt-2 inline-block text-sm underline underline-offset-4">Anwesenheitsliste drucken<span className="sr-only"> (neues Fenster)</span></a>
-          </div>
-          <div>
-            <p className="text-xs text-muted">Offene Reservierungen (unbezahlt)</p>
-            <p className="num text-3xl font-semibold">{reserv.plaetze} <span className="text-base font-normal">Plätze</span></p>
-            <p className="text-xs text-muted">{reserv.bestellungen ? `${reserv.bestellungen} Bestellungen, verfallen um ${fmtZeit(reserv.verfallAm)} Uhr (${reserv.minuten} Min. vor Beginn) – dann frei für die Abendkasse` : 'Keine offenen Telefon-, Rechnungs- oder Zahlungslink-Reservierungen.'}</p>
-            {reserv.bestellungen > 0 && <Link href={`/bestellungen?show=${id}&status=offen`} className="mt-2 inline-block text-sm underline underline-offset-4">Offene Bestellungen ansehen</Link>}
-          </div>
-          <div>
-            <p className="text-xs text-muted">Freikarten (Gästeliste)</p>
-            <p className="num text-3xl font-semibold">{fk.vergeben}{fk.limit != null && <span className="text-base font-normal"> von {fk.limit}</span>}</p>
-            <p className="text-xs text-muted">{gaeste.length} Gäste{freiNachGrund.length ? ` · ${freiNachGrund.map(([g, n]) => `${g} ${n}`).join(', ')}` : ''}</p>
-            <Link href={`/vorstellungen/${id}/gaeste`} className="mt-2 inline-block text-sm underline underline-offset-4">Gästeliste verwalten</Link>
-          </div>
+      <div className="mb-6 grid items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_440px]">
+        <Abschnitt id="saalplan" titel="Saalplan" beschreibung={abgesagt ? undefined : 'Plätze auswählen, um sie zu sperren oder freizugeben. Verkaufte Plätze öffnen die Bestellung.'}>
+          <PlatzVerwaltung status={plaetze.status} info={plaetze.info} sperren={sitzeSperren.bind(null, id)} entsperren={sitzeEntsperren.bind(null, id)} bearbeitbar={!abgesagt} />
+        </Abschnitt>
+        <div className="grid gap-6 lg:grid-cols-2 2xl:grid-cols-1">
+          <Abschnitt id="kategorien" titel="Nach Kategorie" flush>
+            <table className="table rtab">
+              <thead><tr><th scope="col">Kategorie</th><th scope="col" className="text-right">Verkauft</th><th scope="col" className="text-right">Frei</th><th scope="col" className="text-right">Umsatz</th></tr></thead>
+              <tbody>
+                {(['I', 'II', 'R'] as Kat[]).map((k) => {
+                  const x = z.jeKat[k];
+                  return (
+                    <tr key={k}>
+                      <th scope="row" className={`${ZEILENKOPF} rtab-kopf`}>{KAT_NAME[k]}<span className="block text-xs font-normal text-muted">{k === 'R' ? formatEur(preise.R.normal) : `${formatEur(preise[k].normal)} / ${formatEur(preise[k].ermaessigt)}`} · {KAT_KAPAZITAET[k]} Plätze{x.gesperrt ? ` · ${x.gesperrt} gesperrt` : ''}{x.reserviert ? ` · ${x.reserviert} reserviert` : ''}</span></th>
+                      <td data-label="Verkauft" className="num text-right font-semibold">{x.verkauft}{x.eingelassen > 0 && <span className="block text-xs font-normal text-muted">{x.eingelassen} eingelassen</span>}</td>
+                      <td data-label="Frei" className="num text-right">{x.frei}</td>
+                      <td data-label="Umsatz" className="text-right"><Money cents={x.umsatz} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Abschnitt>
+          {begonnen && ns.gesamt.verkauft > 0 ? (
+            <Abschnitt id="noshow" titel="No-Show" flush beschreibung={`${ns.gesamt.noShow} von ${ns.gesamt.verkauft} Tickets nicht eingelassen (${Math.round((ns.gesamt.noShow / ns.gesamt.verkauft) * 100)} %)`}>
+              <table className="table rtab">
+                <thead><tr><th scope="col">Nach</th><th scope="col" className="text-right">Verkauft</th><th scope="col" className="text-right">Eingelassen</th><th scope="col" className="text-right">Nicht da</th></tr></thead>
+                <tbody>
+                  {(['I', 'II', 'R'] as Kat[]).filter((k) => ns.jeKat[k].verkauft).map((k) => (
+                    <tr key={k}><th scope="row" className={`${ZEILENKOPF} rtab-kopf`}>{KAT_NAME[k]}</th><td data-label="Verkauft" className="num text-right">{ns.jeKat[k].verkauft}</td><td data-label="Eingelassen" className="num text-right">{ns.jeKat[k].eingelassen}</td><td data-label="Nicht da" className="num text-right font-semibold">{ns.jeKat[k].noShow}</td></tr>
+                  ))}
+                  {ns.jeKanal.map((k) => (
+                    <tr key={k.channel}><th scope="row" className={`${ZEILENKOPF} rtab-kopf`}>Kanal {KANAL_NAME[k.channel] ?? k.channel}</th><td data-label="Verkauft" className="num text-right">{k.verkauft}</td><td data-label="Eingelassen" className="num text-right">{k.ein}</td><td data-label="Nicht da" className="num text-right font-semibold">{k.noShow}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </Abschnitt>
+          ) : (
+            <Abschnitt id="notiz" titel="Notiz (intern)">
+              {show.notes ? <p className="whitespace-pre-line text-sm">{show.notes}</p> : <p className="text-sm text-muted">Keine Notiz. Über „Bearbeiten“ hinzufügen.</p>}
+            </Abschnitt>
+          )}
         </div>
-        {!abgesagt && (
-          <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
-            <NachrichtDialog action={nachrichtAktion.bind(null, id)} empfaenger={empf.length} titel={titel} />
-            {/* immer rendern: nach dem Abbruch bleibt der offene Dialog mit seinem Ergebnis stehen */}
-            <AbbruchDialog action={abbruchAktion.bind(null, id)} titel={titel} bestellungen={offenAnzahl} versteckt={!abbruchMoeglich(show)} />
-          </div>
-        )}
-      </section>
+      </div>
 
-      {begonnen && ns.gesamt.verkauft > 0 && (
-        <section className="card mb-6" aria-labelledby="noshow">
-          <h2 id="noshow" className="h2 px-5 pt-4">No-Show: verkauft und eingelassen</h2>
-          <p className="px-5 text-sm text-muted">{ns.gesamt.noShow} von {ns.gesamt.verkauft} Tickets nicht eingelassen ({Math.round((ns.gesamt.noShow / ns.gesamt.verkauft) * 100)} %).</p>
-          <table className="table mt-3">
-            <thead><tr><th scope="col">Nach</th><th scope="col" className="text-right">Verkauft</th><th scope="col" className="text-right">Eingelassen</th><th scope="col" className="text-right">Nicht erschienen</th></tr></thead>
-            <tbody>
-              {(['I', 'II', 'R'] as Kat[]).filter((k) => ns.jeKat[k].verkauft).map((k) => (
-                <tr key={k}><th scope="row" className={ZEILENKOPF}>{KAT_NAME[k]}</th><td className="num text-right">{ns.jeKat[k].verkauft}</td><td className="num text-right">{ns.jeKat[k].eingelassen}</td><td className="num text-right font-semibold">{ns.jeKat[k].noShow}</td></tr>
-              ))}
-              {ns.jeKanal.map((k) => (
-                <tr key={k.channel}><th scope="row" className={ZEILENKOPF}>Kanal {KANAL_NAME[k.channel] ?? k.channel}</th><td className="num text-right">{k.verkauft}</td><td className="num text-right">{k.ein}</td><td className="num text-right font-semibold">{k.noShow}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
-
-      <section className="card mb-6" aria-labelledby="kategorien">
-        <h2 id="kategorien" className="h2 px-5 pt-4">Nach Kategorie</h2>
-        <table className="table mt-3">
-          <thead><tr><th scope="col">Kategorie</th><th scope="col" className="text-right">Preis</th><th scope="col" className="text-right">Kapazität</th><th scope="col" className="text-right">Verkauft</th><th scope="col" className="text-right">Eingelassen</th><th scope="col" className="text-right">Reserviert</th><th scope="col" className="text-right">Gesperrt</th><th scope="col" className="text-right">Frei</th><th scope="col" className="text-right">Umsatz</th></tr></thead>
-          <tbody>
-            {(['I', 'II', 'R'] as Kat[]).map((k) => {
-              const x = z.jeKat[k];
-              return (
-                <tr key={k}>
-                  <th scope="row" className={ZEILENKOPF}>{KAT_NAME[k]}</th>
-                  <td className="num text-right">{k === 'R' ? formatEur(preise.R.normal) : `${formatEur(preise[k].normal)} / ${formatEur(preise[k].ermaessigt)}`}</td>
-                  <td className="num text-right">{KAT_KAPAZITAET[k]}</td>
-                  <td className="num text-right font-semibold">{x.verkauft}</td>
-                  <td className="num text-right">{x.eingelassen}</td>
-                  <td className="num text-right">{x.reserviert}</td>
-                  <td className="num text-right">{x.gesperrt}</td>
-                  <td className="num text-right">{x.frei}</td>
-                  <td className="text-right"><Money cents={x.umsatz} /></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="card mb-6 p-5" aria-labelledby="saalplan">
-        <h2 id="saalplan" className="h2 mb-3">Saalplan</h2>
-        <PlatzVerwaltung status={plaetze.status} info={plaetze.info} sperren={sitzeSperren.bind(null, id)} entsperren={sitzeEntsperren.bind(null, id)} bearbeitbar={!abgesagt} />
-      </section>
-
-      {!abgesagt && (
-        <section className="card mb-6 p-5" aria-labelledby="bearbeiten">
-          <h2 id="bearbeiten" className="h2 mb-3">Vorstellung bearbeiten</h2>
-          <BearbeitenFormular action={vorstellungBearbeiten.bind(null, id)} werte={{ datum: wienTag(show.startsAt), zeit: fmtZeit(show.startsAt), status: show.status, notes: show.notes, titel: show.title, preise }} />
-        </section>
-      )}
-
-      <section className="card" aria-labelledby="bestellungen">
-        <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
-          <h2 id="bestellungen" className="h2">Bestellungen</h2>
-          <Link href={`/bestellungen?show=${id}`} className="text-sm underline underline-offset-4">Alle Bestellungen dieser Vorstellung durchsuchen</Link>
-        </div>
+      <Abschnitt id="bestellungen" titel={`Bestellungen${bestellungen.length ? ` (${bestellungen.length}${bestellungen.length === 100 ? '+' : ''})` : ''}`} flush className="mb-6"
+        aktionen={<Link href={`/bestellungen?show=${id}`} className="btn-secondary btn-sm">In der Bestellliste öffnen<Icon name="pfeil" className="h-3.5 w-3.5" /></Link>}>
         {bestellungen.length ? (
-          <table className="table mt-3">
+          <table className="table rtab">
             <thead><tr><th scope="col">Nummer</th><th scope="col">Kund:in</th><th scope="col">Kanal</th><th scope="col">Status</th><th scope="col" className="text-right">Tickets</th><th scope="col" className="text-right">Summe</th><th scope="col">Erstellt</th></tr></thead>
             <tbody>
               {bestellungen.map((o) => (
                 <tr key={o.id}>
-                  <td><Link href={`/bestellungen/${o.id}`} className="font-mono font-medium underline-offset-4 hover:underline">{o.number}</Link></td>
-                  <td>{o.customer ? `${o.customer.firstName} ${o.customer.lastName}`.trim() : '–'}</td>
-                  <td>{KANAL_NAME[o.channel] ?? o.channel}</td>
-                  <td><StatusPill status={o.status} /></td>
-                  <td className="num text-right">{o._count.tickets}</td>
-                  <td className="text-right"><Money cents={o.totalCents} /></td>
-                  <td className="whitespace-nowrap">{fmtDatumZeit(o.createdAt)}</td>
+                  <td className="rtab-kopf"><Link href={`/bestellungen/${o.id}`} className="font-mono text-[13px] font-semibold underline-offset-4 hover:underline">{o.number}</Link></td>
+                  <td data-label="Kund:in">{o.customer ? `${o.customer.firstName} ${o.customer.lastName}`.trim() || '–' : <span className="text-muted">anonym</span>}</td>
+                  <td data-label="Kanal">{KANAL_NAME[o.channel] ?? o.channel}</td>
+                  <td data-label="Status"><StatusPill status={o.status} /></td>
+                  <td data-label="Tickets" className="num text-right">{o._count.tickets}</td>
+                  <td data-label="Summe" className="text-right"><Money cents={o.totalCents} /></td>
+                  <td data-label="Erstellt" className="whitespace-nowrap">{fmtDatumZeit(o.createdAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        ) : <Empty>Noch keine Bestellungen.</Empty>}
-      </section>
+        ) : <Empty icon="ticket" titel="Noch keine Bestellungen" aktion={!abgesagt && show.status === 'verkauf' && show.startsAt > new Date() ? <Link href={`/bestellungen/neu?show=${id}`} className="btn-secondary btn-sm">Tickets verkaufen</Link> : undefined}>Verkäufe aus Webshop, Telefon, Kassa und Partnern erscheinen hier.</Empty>}
+      </Abschnitt>
       <Verlauf ziele={[{ entity: 'show', ids: [show.id] }, { entity: 'showSeries', ids: [show.seriesId] }]} titel="Verlauf der Vorstellung" />
     </>
   );

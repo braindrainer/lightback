@@ -11,7 +11,7 @@ export default async function Neu() {
   await requireRole('admin');
   return (
     <>
-      <PageHeader title="Benutzer anlegen"><Link href="/benutzer" className="btn-secondary">Zur Liste</Link></PageHeader>
+      <PageHeader krumen={[{ label: 'System' }, { label: 'Benutzer', href: '/benutzer' }, { label: 'Anlegen' }]} title="Benutzer anlegen" sub="Zugang für Mitarbeiter:innen mit Rollen; das Passwort wird einmal angezeigt." />
       <Formular action={benutzerAnlegen} knopf="Anlegen" className="card grid max-w-3xl gap-4 p-5" zuruecksetzen>
         <div className="grid gap-4 sm:grid-cols-2">
           <div><label htmlFor="username" className="label">Benutzername</label><input id="username" name="username" required autoComplete="off" pattern="[a-z0-9._\-]{3,32}" aria-describedby="username-h" className="input" /><p id="username-h" className="mt-1 text-xs text-muted">Kleinbuchstaben, Ziffern, Punkt oder Bindestrich</p></div>

@@ -114,23 +114,27 @@ export default async function HilfeVorstellung() {
   await requireRole();
   return (
     <>
-      <PageHeader title="Hilfe: rund um die Vorstellung" sub="Was bei einer Vorstellung passieren kann – und wo Sie klicken." />
-      <nav aria-label="Inhalt" className="card mb-6 p-5">
-        <h2 className="h2 mb-2">Inhalt</h2>
-        <ol className="grid list-decimal gap-1 pl-5 text-sm sm:grid-cols-2">
-          {FAELLE.map((f) => <li key={f.id}><a href={`#${f.id}`} className="underline underline-offset-4">{f.titel}</a></li>)}
-        </ol>
-      </nav>
-      <div className="grid max-w-3xl gap-5">
-        {FAELLE.map((f) => (
-          <section key={f.id} id={f.id} aria-labelledby={`h-${f.id}`} className="card scroll-mt-6 p-5">
-            <h2 id={`h-${f.id}`} className="h2">{f.titel}</h2>
-            <p className="mb-2 text-sm text-muted">Wer: {f.wer}</p>
-            <ol className="grid list-decimal gap-1.5 pl-5 text-base leading-relaxed">
-              {f.schritte.map((s, i) => <li key={i}>{s}</li>)}
-            </ol>
-          </section>
-        ))}
+      <PageHeader krumen={[{ label: 'Vor Ort' }, { label: 'Hilfe: Vorstellung' }]} title="Hilfe: rund um die Vorstellung" sub="Was bei einer Vorstellung passieren kann – und wo Sie klicken." />
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <nav aria-label="Inhalt" className="card p-5 xl:sticky xl:top-6 xl:order-last">
+          <h2 className="eyebrow mb-3">Inhalt</h2>
+          <ol className="grid gap-0.5 text-sm sm:grid-cols-2 xl:grid-cols-1">
+            {FAELLE.map((f, i) => <li key={f.id}><a href={`#${f.id}`} className="flex min-h-8 items-baseline gap-2 rounded-md px-2 py-1 hover:bg-paper-deep"><span className="num w-5 shrink-0 text-right text-xs text-muted">{i + 1}</span><span className="underline-offset-4 hover:underline">{f.titel}</span></a></li>)}
+          </ol>
+        </nav>
+        <div className="grid gap-5">
+          {FAELLE.map((f, i) => (
+            <section key={f.id} id={f.id} aria-labelledby={`h-${f.id}`} className="card scroll-mt-6 p-5 sm:p-6">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 id={`h-${f.id}`} className="flex items-baseline gap-3 text-lg font-semibold"><span aria-hidden="true" className="font-serif text-2xl text-accent">{i + 1}</span>{f.titel}</h2>
+                <span className="pill bg-paper-deep text-ink ring-1 ring-inset ring-line">Wer: {f.wer}</span>
+              </div>
+              <ol className="mt-3 grid list-decimal gap-1.5 pl-5 text-base leading-relaxed marker:text-muted">
+                {f.schritte.map((st, j) => <li key={j}>{st}</li>)}
+              </ol>
+            </section>
+          ))}
+        </div>
       </div>
     </>
   );

@@ -26,6 +26,9 @@ export const AKTION: Record<string, string> = {
   benutzer_angelegt: 'Benutzer angelegt', benutzer_geaendert: 'Benutzer geändert', benutzer_deaktiviert: 'Benutzer deaktiviert',
   einstellungen_firma: 'Firmendaten geändert', einstellungen_rechnungen: 'Nummernkreise geändert', einstellungen_mail: 'Mail-Einstellungen geändert', einstellungen_zahlung: 'Zahlungsanbieter geändert', demo_an: 'Demo-Modus an', demo_aus: 'Demo-Modus aus',
   partner_angelegt: 'Partner angelegt', partner_geaendert: 'Partner geändert', partner_deaktiviert: 'Partner deaktiviert', partner_schluessel_neu: 'API-Schlüssel erneuert', partner_webhook_geheimnis_neu: 'Webhook-Geheimnis erneuert',
+  einlass_verweigert: 'Einlass verweigert', gaeste_import: 'Gästeliste importiert', gast_angelegt: 'Gast eingetragen', gast_ausgegeben: 'Hinterlegte Karten ausgegeben', gast_nachdruck: 'Gastkarten nachgedruckt',
+  nachricht_an_gaeste: 'Nachricht an alle Gäste', nachricht_an_gaeste_fehler: 'Nachricht an Gäste fehlgeschlagen', vorstellung_abgebrochen: 'Vorstellung abgebrochen', vorstellung_abgebrochen_ergebnis: 'Abbruch: Ergebnis',
+  freikarten_kontingent: 'Freikarten-Kontingent geändert', anwesenheit_druck: 'Anwesenheitsliste gedruckt',
   ticket_druck: 'Ticket gedruckt', webhook_ok: 'Webhook zugestellt', webhook_fehler: 'Webhook fehlgeschlagen', mail_erneut: 'Mail erneut gesendet', vorlage_gespeichert: 'Mailvorlage geändert', vorlage_zurueckgesetzt: 'Mailvorlage zurückgesetzt',
 };
 

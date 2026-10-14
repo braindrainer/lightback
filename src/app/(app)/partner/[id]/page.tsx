@@ -5,7 +5,7 @@ import { db } from '@/lib/db';
 import { fmtDatum, fmtDatumZeit, fmtZeit } from '@/lib/dates';
 import { formatEur } from '@/lib/money';
 import { Formular } from '@/components/system/Formular';
-import { Empty, PageHeader, StatusPill } from '@/components/ui';
+import { Abschnitt, DetailKopf, Empty, Icon, Kennzahlen, StatusPill } from '@/components/ui';
 import { partnerSpeichern, schluesselNeu, webhookGeheimnisNeu, webhookTesten } from '../actions';
 import { PartnerFelder } from '../Felder';
 
@@ -35,27 +35,27 @@ export default async function PartnerSeite({ params }: { params: Promise<{ id: s
   const storniert = summe.find((s) => s.status === 'storniert')?._count._all ?? 0;
   return (
     <>
-      <PageHeader title={p.name} sub={`Schlüssel ${p.apiKeyPrefix}… · angelegt ${fmtDatum(p.createdAt)} · zuletzt aktiv ${p.lastUsedAt ? fmtDatumZeit(p.lastUsedAt) : 'nie'}`}>
-        <Link href="/api-doku" className="btn-secondary">API-Dokumentation</Link>
-        <Link href="/partner" className="btn-secondary">Zur Liste</Link>
-      </PageHeader>
+      <DetailKopf krumen={[{ label: 'Verkauf' }, { label: 'Partner & API', href: '/partner' }, { label: p.name }]} titel={p.name}
+        status={p.active ? <StatusPill status="bezahlt" label="Zugang aktiv" /> : <StatusPill status="storniert" label="Deaktiviert" />}
+        untertitel={<>Schlüssel <code className="font-mono">{p.apiKeyPrefix}…</code> · angelegt {fmtDatum(p.createdAt)} · zuletzt aktiv {p.lastUsedAt ? fmtDatumZeit(p.lastUsedAt) : 'nie'}</>}
+        aktionen={<Link href="/api-doku" className="btn-secondary"><Icon name="buch" className="h-4 w-4" />API-Dokumentation</Link>} />
 
-      <dl className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="card p-4"><dt className="text-xs text-muted">Tickets (gültig)</dt><dd className="num mt-1 text-2xl font-semibold">{tickets}</dd></div>
-        <div className="card p-4"><dt className="text-xs text-muted">Umsatz brutto</dt><dd className="num mt-1 text-2xl font-semibold">{formatEur(umsatz)}</dd></div>
-        <div className="card p-4"><dt className="text-xs text-muted">Provision ({p.commissionPct} %)</dt><dd className="num mt-1 text-2xl font-semibold">{formatEur(Math.round((umsatz * p.commissionPct) / 100))}</dd></div>
-        <div className="card p-4"><dt className="text-xs text-muted">Storniert</dt><dd className="num mt-1 text-2xl font-semibold">{storniert}</dd></div>
-      </dl>
+      <Kennzahlen items={[
+        { label: 'Tickets (gültig)', wert: tickets, icon: 'ticket' },
+        { label: 'Umsatz brutto', wert: formatEur(umsatz), ton: 'gold', icon: 'euro' },
+        { label: `Provision (${p.commissionPct} %)`, wert: formatEur(Math.round((umsatz * p.commissionPct) / 100)) },
+        { label: 'Storniert', wert: storniert, icon: 'storno' },
+      ]} />
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Formular action={partnerSpeichern} knopf="Speichern" className="card p-5">
+      <div className="grid items-start gap-6 xl:grid-cols-2">
+        <Formular action={partnerSpeichern} knopf="Speichern" className="card !overflow-visible p-5">
           <h2 className="h2 mb-3">Vertrag und Zugang</h2>
           <input type="hidden" name="id" value={p.id} />
           <PartnerFelder p={p} />
           <label className="mt-3 flex min-h-10 items-center gap-2.5"><input type="checkbox" name="active" defaultChecked={p.active} className="h-4 w-4 accent-[#6e5118]" /> <span className="text-sm font-semibold">Zugang aktiv</span></label>
         </Formular>
 
-        <div className="grid content-start gap-5">
+        <div className="grid content-start gap-6">
           <Formular action={schluesselNeu} knopf="Neuen Schlüssel erzeugen" variante="btn-danger" bestaetigen={`Neuen API-Schlüssel für ${p.name} erzeugen? Der bisherige Schlüssel funktioniert dann sofort nicht mehr.`} className="card p-5">
             <h2 className="h2">API-Schlüssel</h2>
             <p className="mt-1 text-sm text-muted">Aktueller Schlüssel beginnt mit <code className="font-mono">{p.apiKeyPrefix}</code>. Wir speichern nur einen Hash; verlorene Schlüssel lassen sich nicht anzeigen, nur ersetzen.</p>
@@ -79,25 +79,25 @@ export default async function PartnerSeite({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      <section aria-labelledby="monate" className="card mt-5 p-5">
-        <h2 id="monate" className="h2 mb-3">Verkäufe der letzten 12 Monate</h2>
+      <div className="mt-6 grid items-start gap-6 xl:grid-cols-2">
+      <Abschnitt id="monate" titel="Verkäufe der letzten 12 Monate" flush>
         {monate.length ? (
-          <table className="table">
+          <table className="table rtab">
             <thead><tr><th scope="col">Monat</th><th scope="col" className="text-right">Tickets</th><th scope="col" className="text-right">Umsatz</th><th scope="col" className="text-right">Provision</th><th scope="col" className="text-right">Storniert</th></tr></thead>
-            <tbody>{monate.map((r) => <tr key={r.monat}><td>{r.monat.slice(5)}/{r.monat.slice(0, 4)}</td><td className="num text-right">{r.tickets}</td><td className="num text-right">{formatEur(r.umsatz)}</td><td className="num text-right">{formatEur(Math.round((r.umsatz * p.commissionPct) / 100))}</td><td className="num text-right">{r.storniert}</td></tr>)}</tbody>
+            <tbody>{monate.map((r) => <tr key={r.monat}><td className="rtab-kopf">{r.monat.slice(5)}/{r.monat.slice(0, 4)}</td><td data-label="Tickets" className="num text-right">{r.tickets}</td><td data-label="Umsatz" className="num text-right">{formatEur(r.umsatz)}</td><td data-label="Provision" className="num text-right">{formatEur(Math.round((r.umsatz * p.commissionPct) / 100))}</td><td data-label="Storniert" className="num text-right">{r.storniert}</td></tr>)}</tbody>
           </table>
-        ) : <Empty>Noch keine Verkäufe.</Empty>}
-      </section>
+        ) : <Empty icon="diagramm">Noch keine Verkäufe über diesen Partner.</Empty>}
+      </Abschnitt>
 
-      <section aria-labelledby="best" className="card mt-5 p-5">
-        <h2 id="best" className="h2 mb-3">Letzte Bestellungen</h2>
+      <Abschnitt id="best" titel="Letzte Bestellungen" flush>
         {bestellungen.length ? (
-          <table className="table">
+          <table className="table rtab">
             <thead><tr><th scope="col">Bestellung</th><th scope="col">Partner-Ref.</th><th scope="col">Vorstellung</th><th scope="col" className="text-right">Tickets</th><th scope="col" className="text-right">Betrag</th><th scope="col">Status</th></tr></thead>
-            <tbody>{bestellungen.map((o) => <tr key={o.id}><td><Link href={`/bestellungen/${o.id}`} className="font-mono text-[13px] underline underline-offset-4">{o.number}</Link></td><td className="font-mono text-[13px]">{o.partnerRef ?? '–'}</td><td>{fmtDatum(o.show.startsAt)}, {fmtZeit(o.show.startsAt)}</td><td className="num text-right">{o._count.tickets}</td><td className="num text-right">{formatEur(o.totalCents)}</td><td><StatusPill status={o.status} /></td></tr>)}</tbody>
+            <tbody>{bestellungen.map((o) => <tr key={o.id}><td className="rtab-kopf"><Link href={`/bestellungen/${o.id}`} className="font-mono text-[13px] font-semibold underline-offset-4 hover:underline">{o.number}</Link></td><td data-label="Partner-Ref." className="font-mono text-[13px]">{o.partnerRef ?? '–'}</td><td data-label="Vorstellung" className="whitespace-nowrap">{fmtDatum(o.show.startsAt)}, {fmtZeit(o.show.startsAt)}</td><td data-label="Tickets" className="num text-right">{o._count.tickets}</td><td data-label="Betrag" className="num text-right">{formatEur(o.totalCents)}</td><td data-label="Status"><StatusPill status={o.status} /></td></tr>)}</tbody>
           </table>
-        ) : <Empty>Noch keine Bestellungen.</Empty>}
-      </section>
+        ) : <Empty icon="ticket">Noch keine Bestellungen über die API.</Empty>}
+      </Abschnitt>
+      </div>
     </>
   );
 }

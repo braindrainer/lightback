@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { requireRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { fmtDatum } from '@/lib/dates';
-import { Empty, Money, PageHeader } from '@/components/ui';
+import { Empty, Icon, Money, PageHeader } from '@/components/ui';
 import { Seiten } from '@/components/verkauf/Seiten';
 
 export const dynamic = 'force-dynamic';
@@ -45,27 +45,27 @@ export default async function Kunden({ searchParams }: { searchParams: Promise<R
   const anzahl = gesamt[0]?.n ?? 0;
   return (
     <>
-      <PageHeader title="Kund:innen" sub={`${anzahl} Personen (zusammengefasst nach E-Mail-Adresse)`} />
+      <PageHeader title="Kund:innen" krumen={[{ label: 'Verkauf' }, { label: 'Kund:innen' }]} sub={<><span className="num font-semibold text-ink">{anzahl.toLocaleString('de-AT')}</span> Personen, zusammengefasst nach E-Mail-Adresse</>} />
       <form method="get" role="search" aria-label="Kund:innen suchen" className="card mb-4 flex flex-wrap items-end gap-3 p-4">
-        <div className="min-w-60 flex-1"><label htmlFor="q" className="label">Suche</label><input id="q" name="q" type="search" defaultValue={q} placeholder="Name, E-Mail, Telefon, Firma" className="input" /></div>
+        <div className="min-w-60 flex-1"><label htmlFor="q" className="label">Suche</label><div className="relative"><Icon name="suche" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" /><input id="q" name="q" type="search" defaultValue={q} placeholder="Name, E-Mail, Telefon, Firma" className="input !pl-9" /></div></div>
         <label className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" name="newsletter" value="ja" defaultChecked={nl} className="h-4 w-4 accent-accent" />Nur Newsletter</label>
         <button className="btn-primary">Suchen</button>
       </form>
-      <section className="card" aria-label="Ergebnisse">
+      <section className="card tabelle-frei" aria-label="Ergebnisse">
         {zeilen.length ? (
-          <table className="table">
+          <table className="table rtab">
             <caption className="sr-only">Kund:innen mit Bestellungen und Umsatz</caption>
             <thead><tr><th scope="col">Name</th><th scope="col">E-Mail</th><th scope="col">Telefon</th><th scope="col">Newsletter</th><th scope="col" className="text-right">Bestellungen</th><th scope="col" className="text-right">Umsatz</th><th scope="col">Zuletzt</th></tr></thead>
             <tbody>{zeilen.map((z) => (
               <tr key={z.schluessel}>
-                <td><Link href={`/kunden/${z.id}`} className="font-medium underline-offset-4 hover:underline">{`${z.vorname} ${z.nachname}`.trim() || '(ohne Namen)'}</Link>{z.firma && <span className="block text-xs text-muted">{z.firma}</span>}</td>
-                <td>{z.email || '–'}</td><td>{z.telefon ?? '–'}</td><td>{z.newsletter ? 'Ja' : 'Nein'}</td>
-                <td className="num text-right">{z.bestellungen}</td><td className="text-right"><Money cents={z.umsatz} /></td><td>{z.zuletzt ? fmtDatum(z.zuletzt) : '–'}</td>
+                <td className="rtab-kopf"><Link href={`/kunden/${z.id}`} className="font-semibold underline-offset-4 hover:underline">{`${z.vorname} ${z.nachname}`.trim() || '(ohne Namen)'}</Link>{z.firma && <span className="block text-xs text-muted">{z.firma}</span>}</td>
+                <td data-label="E-Mail" className="break-all">{z.email || <span className="text-muted">–</span>}</td><td data-label="Telefon" className="whitespace-nowrap">{z.telefon ?? <span className="text-muted">–</span>}</td><td data-label="Newsletter">{z.newsletter ? <span className="pill bg-accent-soft text-accent-deep">Ja</span> : <span className="text-muted">Nein</span>}</td>
+                <td data-label="Bestellungen" className="num text-right">{z.bestellungen}</td><td data-label="Umsatz" className="text-right font-medium"><Money cents={z.umsatz} /></td><td data-label="Zuletzt" className="whitespace-nowrap">{z.zuletzt ? fmtDatum(z.zuletzt) : '–'}</td>
               </tr>
             ))}</tbody>
           </table>
-        ) : <Empty>Keine Kund:innen gefunden.</Empty>}
-        <Seiten seite={seite} seiten={Math.ceil(anzahl / PRO_SEITE)} basis="/kunden" params={{ q: q || undefined, newsletter: nl ? 'ja' : undefined }} />
+        ) : <Empty icon="kunden" titel="Keine Kund:innen gefunden" aktion={q || nl ? <Link href="/kunden" className="btn-secondary btn-sm">Suche zurücksetzen</Link> : undefined}>Kund:innen entstehen mit jeder Bestellung mit Namen oder E-Mail.</Empty>}
+        <Seiten seite={seite} seiten={Math.ceil(anzahl / PRO_SEITE)} basis="/kunden" params={{ q: q || undefined, newsletter: nl ? 'ja' : undefined }} gesamt={anzahl} pro={PRO_SEITE} />
       </section>
     </>
   );

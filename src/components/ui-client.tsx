@@ -227,3 +227,14 @@ export function Bestaetigen({ offen, onClose, onJa, titel, text, ja = 'Bestätig
     </Modal>
   );
 }
+
+/** Knopf, der eine Seitenleiste mit beliebigem Inhalt öffnet (z. B. ein Bearbeiten-Formular) */
+export function DrawerKnopf({ knopf, knopfKlasse = 'btn-secondary', titel, untertitel, children, breit, icon }: { knopf: React.ReactNode; knopfKlasse?: string; titel: string; untertitel?: React.ReactNode; children: React.ReactNode; breit?: boolean; icon?: string }) {
+  const [offen, setOffen] = useState(false);
+  return (
+    <>
+      <button type="button" className={knopfKlasse} onClick={() => setOffen(true)} aria-haspopup="dialog">{icon && <Icon name={icon} className="h-4 w-4" />}{knopf}</button>
+      <Drawer offen={offen} onClose={() => setOffen(false)} titel={titel} untertitel={untertitel} breit={breit}>{children}</Drawer>
+    </>
+  );
+}

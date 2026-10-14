@@ -15,7 +15,7 @@ export default async function Vorlagen() {
   const eigene = new Map((await db.emailTemplate.findMany()).map((t) => [t.key, t]));
   return (
     <>
-      <PageHeader title="E-Mail-Vorlagen" sub="Texte der automatischen Mails. Platzhalter in doppelten geschweiften Klammern werden beim Versand ersetzt.">
+      <PageHeader krumen={[{ label: 'System' }, { label: 'E-Mails', href: '/emails' }, { label: 'Vorlagen' }]} title="E-Mail-Vorlagen" sub="Texte der automatischen Mails. Platzhalter in doppelten geschweiften Klammern werden beim Versand ersetzt.">
         <Link href="/emails" className="btn-secondary">Zum Mail-Protokoll</Link>
       </PageHeader>
       <div className="grid gap-6">

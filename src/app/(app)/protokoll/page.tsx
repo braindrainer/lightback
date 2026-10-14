@@ -39,7 +39,7 @@ export default async function Protokoll({ searchParams }: { searchParams: Promis
   const link = (s: number) => `/protokoll?${filterQuery(f, { seite: String(s) })}`;
   return (
     <>
-      <PageHeader title="Protokoll" sub={`${anzahl.toLocaleString('de-AT')} Einträge – nur anhängbar, jeder Eintrag mit dem Hash seines Vorgängers verkettet`}>
+      <PageHeader krumen={[{ label: 'System' }, { label: 'Protokoll' }]} title="Protokoll" sub={`${anzahl.toLocaleString('de-AT')} Einträge – nur anhängbar, jeder Eintrag mit dem Hash seines Vorgängers verkettet`}>
         <Link href={`/protokoll?${filterQuery(f, { pruefen: '1' })}`} className="btn-primary">Integrität prüfen</Link>
         <a href={`/protokoll/export?${filterQuery(f, { format: 'csv' })}`} className="btn-secondary">CSV-Export</a>
         <a href={`/protokoll/export?${filterQuery(f, { format: 'json' })}`} className="btn-secondary">JSON-Export</a>

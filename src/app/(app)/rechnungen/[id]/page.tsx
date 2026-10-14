@@ -8,7 +8,7 @@ import { rechnungDoc } from '@/lib/finanzen/rechnungen';
 import { fmtBuchDatum, heute } from '@/lib/finanzen/zeitraum';
 import { pflichtHinweise, steuerAufstellung, type Empfaenger } from '@/lib/invoice-html';
 import { Formular, Senden } from '@/components/finanzen/Formular';
-import { Money, PageHeader, StatusPill } from '@/components/ui';
+import { DetailKopf, Hinweis, Icon, Money, StatusPill } from '@/components/ui';
 import { sendenAktion, stornoAktion, zahlungErhaltenAktion } from '../actions';
 import RechnungModal from '@/components/finanzen/RechnungModal';
 
@@ -33,19 +33,30 @@ export default async function Rechnung({ params, searchParams }: { params: Promi
   const offen = inv.kind === 'rechnung' && inv.status === 'offen';
   return (
     <>
-      <PageHeader title={`${inv.kind === 'storno' ? 'Stornorechnung' : 'Rechnung'} ${inv.number}`} sub={<>{manuell ? 'Manuelle Rechnung' : <>Aus Bestellung <Link className="underline underline-offset-4" href={`/bestellungen/${inv.order!.id}`}>{inv.order!.number}</Link></>} · ausgestellt {fmtDatum(inv.issueDate)}</>}>
-        <RechnungModal id={inv.id} nummer={inv.number} storno={inv.kind === 'storno'} className="btn-primary" />
-        <a href={`/rechnungen/${inv.id}/pdf?download=1`} className="btn-secondary">PDF herunterladen</a>
-        <a href={`/rechnungen/${inv.id}/pdf`} target="_blank" rel="noopener" className="btn-secondary">PDF öffnen<span className="sr-only"> (neues Fenster)</span></a>
-        <Link href="/rechnungen" className="btn-secondary">Zur Liste</Link>
-      </PageHeader>
-      {sp.bezahlt && <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-pos">Zahlungseingang gebucht (Bank bzw. Kassa an 2000 Forderungen).</p>}
-      {sp.neu && <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-pos">Rechnung angelegt und gebucht (Forderung an Erlöse und Umsatzsteuer).</p>}
+      <DetailKopf
+        krumen={[{ label: 'Finanzen' }, { label: 'Rechnungen', href: '/rechnungen' }, { label: inv.number }]}
+        titel={inv.number} mono
+        status={<>{inv.kind === 'storno' ? <StatusPill status="storniert" label="Stornorechnung" /> : <StatusPill status={inv.status} />}{manuell && <span className="pill bg-paper-deep text-ink ring-1 ring-inset ring-line">Manuell</span>}</>}
+        untertitel={<>{manuell ? 'Manuelle Rechnung' : <>Aus Bestellung <Link className="link font-mono" href={`/bestellungen/${inv.order!.id}`}>{inv.order!.number}</Link></>} · ausgestellt {fmtDatum(inv.issueDate)}</>}
+        aktionen={<>
+          <RechnungModal id={inv.id} nummer={inv.number} storno={inv.kind === 'storno'} className="btn-primary" />
+          <a href={`/rechnungen/${inv.id}/pdf?download=1`} className="btn-secondary"><Icon name="download" className="h-4 w-4" />PDF</a>
+        </>}
+        menue={[{ label: 'PDF in neuem Tab öffnen', href: `/rechnungen/${inv.id}/pdf`, extern: true, icon: 'extern' }, ...(manuell ? [] : [{ label: 'Bestellung öffnen', href: `/bestellungen/${inv.order!.id}`, icon: 'liste' }])]}
+        fakten={[
+          { label: 'Netto', wert: <Money cents={inv.netCents} /> },
+          { label: 'USt', wert: <Money cents={inv.vatCents} /> },
+          { label: 'Brutto', wert: <Money cents={inv.grossCents} /> },
+          { label: 'Gesendet', wert: inv.sentAt ? fmtDatumZeit(inv.sentAt) : <span className="font-normal text-muted">noch nicht</span> },
+        ]}
+      />
+      {sp.bezahlt && <Hinweis art="ok" rolle="status">Zahlungseingang gebucht (Bank bzw. Kassa an 2000 Forderungen).</Hinweis>}
+      {sp.neu && <Hinweis art="ok" rolle="status">Rechnung angelegt und gebucht (Forderung an Erlöse und Umsatzsteuer).</Hinweis>}
       {hinweise.length > 0 && (
-        <div className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-warn"><p className="font-semibold">Pflichtangaben prüfen</p><ul className="ml-4 list-disc">{hinweise.map((h) => <li key={h}>{h}</li>)}</ul></div>
+        <Hinweis art="warn" titel="Pflichtangaben prüfen"><ul className="ml-4 list-disc">{hinweise.map((h) => <li key={h}>{h}</li>)}</ul></Hinweis>
       )}
-      <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
-        <div className="grid gap-5">
+      <div className="grid items-start gap-6 xl:grid-cols-[1fr_380px]">
+        <div className="grid gap-6">
           <section className="card relative p-5" aria-labelledby="h-daten">
             <h2 id="h-daten" className="h2 mb-3">Daten</h2>
             <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
