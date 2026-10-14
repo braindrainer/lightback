@@ -42,7 +42,7 @@ export function positionen(seats: { seatId: string; art: string }[], prices: Pre
 }
 
 /** Bestellung aus einer Reservierung anlegen (noch unbezahlt). Gutschein wird hier nur geprüft. */
-export async function bestellungAnlegen(p: { holdToken: string; kunde?: KundeEingabe; channel?: string; partnerId?: string; partnerRef?: string; voucherCode?: string; createdById?: string; locale?: string; note?: string }) {
+export async function bestellungAnlegen(p: { holdToken: string; kunde?: KundeEingabe; customerId?: string; channel?: string; partnerId?: string; partnerRef?: string; voucherCode?: string; createdById?: string; locale?: string; note?: string }) {
   const hold = await db.hold.findUnique({ where: { token: p.holdToken } });
   if (!hold || hold.expiresAt < new Date()) throw new Error('Die Reservierung ist abgelaufen. Bitte wählen Sie die Plätze erneut.');
   const show = await db.show.findUniqueOrThrow({ where: { id: hold.showId } });
@@ -61,7 +61,7 @@ export async function bestellungAnlegen(p: { holdToken: string; kunde?: KundeEin
     await tx.seatLock.updateMany({ where: { holdId: hold.id }, data: { expiresAt: bis } });
     return tx.order.create({
       data: {
-        number: await bestellnummer(tx), channel: p.channel ?? 'web', showId: show.id, customerId: kunde?.id, totalCents: total, voucherCents,
+        number: await bestellnummer(tx), channel: p.channel ?? 'web', showId: show.id, customerId: kunde?.id ?? p.customerId, totalCents: total, voucherCents,
         partnerId: p.partnerId, partnerRef: p.partnerRef, createdById: p.createdById, voucherCode: voucherCents ? p.voucherCode!.trim().toUpperCase() : null, locale: p.locale ?? 'de', note: p.note ?? '', holdId: hold.id,
       },
     });
@@ -183,7 +183,7 @@ export async function stornieren(p: { orderId: string; ticketIds?: string[]; met
   const ueberAnbieter = p.methode === 'zahlungsmittel' ? Math.min(auszahlen, nochBezahlt) : 0;
   const zahlung = o.payments.find((x) => x.status === 'bezahlt' || x.status === 'teilerstattet');
   let providerRef: string | undefined;
-  if (ueberAnbieter > 0 && zahlung && !['bar', 'rechnung', 'partner'].includes(zahlung.provider)) {
+  if (ueberAnbieter > 0 && zahlung && !['bar', 'terminal', 'rechnung', 'partner', 'gutschein'].includes(zahlung.provider)) {
     const r = await erstatten(zahlung.provider, zahlung.providerRef ?? '', ueberAnbieter);
     if (!r.ok) throw new Error(`Erstattung fehlgeschlagen: ${r.fehler}`);
     providerRef = r.ref;
@@ -248,6 +248,8 @@ async function stornoRechnung(tx: Tx, orderId: string, ticketIds: string[]) {
 export async function vorstellungAbsagen(showId: string, grund: string, methode: 'zahlungsmittel' | 'gutschein', userId?: string) {
   await db.show.update({ where: { id: showId }, data: { status: 'abgesagt', cancelReason: grund } });
   await db.hold.deleteMany({ where: { showId } });
+  // Unbezahlte Bestellungen (Rechnung, Zahlungslink) verfallen mit der Reservierung
+  await db.order.updateMany({ where: { showId, status: 'offen' }, data: { status: 'storniert', cancelledAt: new Date(), holdId: null } });
   const orders = await db.order.findMany({ where: { showId, status: { in: ['bezahlt', 'teilstorniert'] } }, select: { id: true } });
   const ergebnis = { ok: 0, fehler: [] as string[] };
   for (const o of orders) {

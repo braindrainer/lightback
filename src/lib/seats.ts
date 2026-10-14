@@ -90,3 +90,8 @@ export async function sperren(showId: string, seatIds: string[], reason: string)
 export async function entsperren(showId: string, seatIds: string[]) {
   await db.seatLock.deleteMany({ where: { showId, seatId: { in: seatIds }, kind: 'block' } });
 }
+
+/** Reservierung einer offenen Bestellung (Rechnung, Zahlungslink) bis zu einem Zeitpunkt halten */
+export async function haltenBis(holdId: string, bis: Date) {
+  await db.$transaction([db.hold.update({ where: { id: holdId }, data: { expiresAt: bis } }), db.seatLock.updateMany({ where: { holdId }, data: { expiresAt: bis } })]);
+}
