@@ -52,9 +52,8 @@ html, body { background: var(--color-paper); color: var(--color-ink); }
 @media (max-width: 1023px) {
   main table.table { display: block; overflow-x: auto; max-width: 100%; }
 }
-@media (min-width: 1024px) {
-  .card { overflow-x: auto; }
-}
+.card { overflow-x: auto; }
+main .grid > *, main .flex > * { min-width: 0; }
 main pre { overflow-x: auto; max-width: 100%; }
 main code { overflow-wrap: anywhere; }
 
