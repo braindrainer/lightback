@@ -12,6 +12,11 @@ import PlatzVerwaltung from '@/components/verkauf/PlatzVerwaltung';
 import { AbsageDialog, BearbeitenFormular } from '@/components/verkauf/ShowAktionen';
 import { KANAL_NAME, KAT_NAME, ZEILENKOPF } from '@/components/verkauf/texte';
 import { sitzeEntsperren, sitzeSperren, vorstellungAbsagenAktion, vorstellungBearbeiten } from '../actions';
+import { abbruchAktion, nachrichtAktion } from '../ablauf-actions';
+import { AbbruchDialog, NachrichtDialog } from '@/components/verkauf/Gaeste';
+import { stand } from '@/lib/einlass';
+import { freikartenStand, gaesteListe, nachGrund } from '@/lib/gaeste';
+import { abbruchMoeglich, empfaenger, noShow, offeneReservierungen } from '@/lib/vorstellung';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,12 +34,20 @@ export default async function Vorstellung({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const show = await db.show.findUnique({ where: { id }, include: { series: { select: { name: true } } } });
   if (!show) notFound();
-  const [plaetze, zahlenMap, bestellungen, offenAnzahl] = await Promise.all([
+  const [plaetze, zahlenMap, bestellungen, offenAnzahl, imSaal, gaeste, fk, reserv, empf, ns] = await Promise.all([
     platzDaten(id),
     auslastungListe([id]),
     db.order.findMany({ where: { showId: id }, orderBy: { createdAt: 'desc' }, take: 100, include: { customer: true, _count: { select: { tickets: { where: { status: { not: 'storniert' } } } } } } }),
     db.order.count({ where: { showId: id, status: { in: ['bezahlt', 'teilstorniert'] } } }),
+    stand(id),
+    gaesteListe(id),
+    freikartenStand(id),
+    offeneReservierungen(id),
+    empfaenger(id),
+    noShow(id),
   ]);
+  const begonnen = show.startsAt.getTime() <= Date.now();
+  const freiNachGrund = nachGrund(await db.order.findMany({ where: { showId: id, status: { in: ['bezahlt', 'teilstorniert'] }, tickets: { some: { art: 'frei', status: { not: 'storniert' } } } }, select: { meta: true, tickets: { select: { status: true, art: true } } } }));
   const z = zahlenMap.get(id)!;
   const st = plaetze.status;
   const anz = (s: string) => Object.values(st).filter((x) => x === s).length;
@@ -45,11 +58,13 @@ export default async function Vorstellung({ params }: { params: Promise<{ id: st
     <>
       <PageHeader title={`Vorstellung ${titel}`} sub={<>{show.title}{show.series && <> · Serie „{show.series.name}“</>} · <Link href="/vorstellungen" className="underline underline-offset-4">Alle Vorstellungen</Link></>}>
         <StatusPill status={show.status} />
-        <a href={`/vorstellungen/${id}/gaesteliste.csv`} className="btn-secondary" download>Gästeliste (CSV)</a>
+        <Link href={`/vorstellungen/${id}/gaeste`} className="btn-secondary">Gästeliste (Freikarten)</Link>
+        <a href={`/vorstellungen/${id}/gaesteliste.csv`} className="btn-secondary" download>Besucherliste (CSV)</a>
         {!abgesagt && show.status === 'verkauf' && show.startsAt > new Date() && <Link href={`/bestellungen/neu?show=${id}`} className="btn-gold">Tickets verkaufen</Link>}
         <AbsageDialog action={vorstellungAbsagenAktion.bind(null, id)} titel={titel} bestellungen={offenAnzahl} versteckt={abgesagt} />
       </PageHeader>
       {abgesagt && <p role="status" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-900">Abgesagt{show.cancelReason ? `: ${show.cancelReason}` : ''}</p>}
+      {show.abgebrochenAt && <p role="status" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-900">Abgebrochen um {fmtZeit(show.abgebrochenAt)} Uhr{show.abbruchGrund ? `: ${show.abbruchGrund}` : ''}</p>}
 
       <section aria-labelledby="kennzahlen" className="mb-6">
         <h2 id="kennzahlen" className="sr-only">Kennzahlen</h2>
@@ -62,6 +77,55 @@ export default async function Vorstellung({ params }: { params: Promise<{ id: st
           <Kennzahl label="Umsatz (brutto)" wert={formatEur(z.gesamt.umsatz)} />
         </div>
       </section>
+
+      <section className="card mb-6 p-5" aria-labelledby="ablauf">
+        <h2 id="ablauf" className="h2 mb-3">Rund um die Vorstellung</h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          <div>
+            <p className="text-xs text-muted">Im Saal (laut Einlass)</p>
+            <p className="num text-3xl font-semibold">{imSaal.imSaal} <span className="text-base font-normal">Personen</span></p>
+            <p className="text-xs text-muted">{imSaal.eingelassen} Tickets eingelassen, Rollstuhlplätze zählen mit Begleitperson</p>
+            <a href={`/vorstellungen/${id}/anwesenheit`} target="_blank" rel="noopener" className="mt-2 inline-block text-sm underline underline-offset-4">Anwesenheitsliste drucken<span className="sr-only"> (neues Fenster)</span></a>
+          </div>
+          <div>
+            <p className="text-xs text-muted">Offene Reservierungen (unbezahlt)</p>
+            <p className="num text-3xl font-semibold">{reserv.plaetze} <span className="text-base font-normal">Plätze</span></p>
+            <p className="text-xs text-muted">{reserv.bestellungen ? `${reserv.bestellungen} Bestellungen, verfallen um ${fmtZeit(reserv.verfallAm)} Uhr (${reserv.minuten} Min. vor Beginn) – dann frei für die Abendkasse` : 'Keine offenen Telefon-, Rechnungs- oder Zahlungslink-Reservierungen.'}</p>
+            {reserv.bestellungen > 0 && <Link href={`/bestellungen?show=${id}&status=offen`} className="mt-2 inline-block text-sm underline underline-offset-4">Offene Bestellungen ansehen</Link>}
+          </div>
+          <div>
+            <p className="text-xs text-muted">Freikarten (Gästeliste)</p>
+            <p className="num text-3xl font-semibold">{fk.vergeben}{fk.limit != null && <span className="text-base font-normal"> von {fk.limit}</span>}</p>
+            <p className="text-xs text-muted">{gaeste.length} Gäste{freiNachGrund.length ? ` · ${freiNachGrund.map(([g, n]) => `${g} ${n}`).join(', ')}` : ''}</p>
+            <Link href={`/vorstellungen/${id}/gaeste`} className="mt-2 inline-block text-sm underline underline-offset-4">Gästeliste verwalten</Link>
+          </div>
+        </div>
+        {!abgesagt && (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
+            <NachrichtDialog action={nachrichtAktion.bind(null, id)} empfaenger={empf.length} titel={titel} />
+            {/* immer rendern: nach dem Abbruch bleibt der offene Dialog mit seinem Ergebnis stehen */}
+            <AbbruchDialog action={abbruchAktion.bind(null, id)} titel={titel} bestellungen={offenAnzahl} versteckt={!abbruchMoeglich(show)} />
+          </div>
+        )}
+      </section>
+
+      {begonnen && ns.gesamt.verkauft > 0 && (
+        <section className="card mb-6" aria-labelledby="noshow">
+          <h2 id="noshow" className="h2 px-5 pt-4">No-Show: verkauft und eingelassen</h2>
+          <p className="px-5 text-sm text-muted">{ns.gesamt.noShow} von {ns.gesamt.verkauft} Tickets nicht eingelassen ({Math.round((ns.gesamt.noShow / ns.gesamt.verkauft) * 100)} %).</p>
+          <table className="table mt-3">
+            <thead><tr><th scope="col">Nach</th><th scope="col" className="text-right">Verkauft</th><th scope="col" className="text-right">Eingelassen</th><th scope="col" className="text-right">Nicht erschienen</th></tr></thead>
+            <tbody>
+              {(['I', 'II', 'R'] as Kat[]).filter((k) => ns.jeKat[k].verkauft).map((k) => (
+                <tr key={k}><th scope="row" className={ZEILENKOPF}>{KAT_NAME[k]}</th><td className="num text-right">{ns.jeKat[k].verkauft}</td><td className="num text-right">{ns.jeKat[k].eingelassen}</td><td className="num text-right font-semibold">{ns.jeKat[k].noShow}</td></tr>
+              ))}
+              {ns.jeKanal.map((k) => (
+                <tr key={k.channel}><th scope="row" className={ZEILENKOPF}>Kanal {KANAL_NAME[k.channel] ?? k.channel}</th><td className="num text-right">{k.verkauft}</td><td className="num text-right">{k.ein}</td><td className="num text-right font-semibold">{k.noShow}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <section className="card mb-6" aria-labelledby="kategorien">
         <h2 id="kategorien" className="h2 px-5 pt-4">Nach Kategorie</h2>

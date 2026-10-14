@@ -31,7 +31,11 @@ export const satzFeld = (vatRate: number): Satzfeld => (vatRate === 20 ? 'normal
 export type Betraege = Record<Satzfeld, number>;
 export const leereBetraege = (): Betraege => ({ normal: 0, erm1: 0, erm2: 0, null: 0, besonders: 0 });
 
-export type Position = { productId?: string; name: string; quantity: number; unitCents: number; vatRate: number; category?: string; ticketIds?: string[]; voucherCodes?: string[] };
+export type Position = {
+  productId?: string; name: string; quantity: number; unitCents: number; vatRate: number; category?: string; ticketIds?: string[]; voucherCodes?: string[];
+  /** category 'ticket-aufpreis': Aufzahlung zu einem Ticket (Umsetzen, ermäßigt → Vollpreis) */
+  aufpreis?: { ticketId: string; artVorher: string; artNachher: string; seatVorher: string; seatNachher: string };
+};
 
 export function betraegeAus(items: Position[]): Betraege {
   const b = leereBetraege();

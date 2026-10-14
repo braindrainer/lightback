@@ -250,6 +250,7 @@ export async function rechnungErstellenAktion(orderId: string, _: Ergebnis): Pro
     const o = await db.order.findUniqueOrThrow({ where: { id: orderId }, include: { invoices: true } });
     if (!['bezahlt', 'teilstorniert'].includes(o.status)) throw new Error('Rechnungen gibt es nur für bezahlte Bestellungen');
     if (o.invoices.some((i) => i.kind === 'rechnung')) throw new Error('Für diese Bestellung gibt es bereits eine Rechnung');
+    if (o.totalCents === 0) throw new Error('Freikarten (0 €) bekommen keine Rechnung');
     const inv = await db.$transaction((tx) => rechnungFuerBestellung(tx, orderId), { maxWait: 10_000, timeout: 20_000 });
     if (!inv) throw new Error('Für diese Bestellung gibt es bereits eine Rechnung');
     await protokoll({ action: 'rechnung_erstellt', entity: 'invoice', entityId: inv.id, data: { bestellung: o.number, orderId, nachtraeglich: true }, nachher: { number: inv.number, kind: inv.kind, netCents: inv.netCents, vatCents: inv.vatCents, grossCents: inv.grossCents } });

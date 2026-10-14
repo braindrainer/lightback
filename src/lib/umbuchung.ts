@@ -9,12 +9,12 @@ import { freigeben, reservieren } from './seats';
 
 export type Nachzahlung = 'bar' | 'terminal' | 'rechnung';
 
-export async function umbuchen(p: { orderId: string; ticketIds?: string[]; showId: string; seats: { seatId: string; art: string }[]; nachzahlung: Nachzahlung; userId?: string; fristIgnorieren?: boolean }) {
+export async function umbuchen(p: { orderId: string; ticketIds?: string[]; showId: string; seats: { seatId: string; art: string }[]; nachzahlung: Nachzahlung; userId?: string; fristIgnorieren?: boolean; vorOrt?: boolean }) {
   const alt = await db.order.findUniqueOrThrow({ where: { id: p.orderId }, include: { show: true, tickets: true } });
   const altTickets = alt.tickets.filter((t) => t.status === 'gueltig' && (!p.ticketIds || p.ticketIds.includes(t.id)));
   const neueShow = await db.show.findUniqueOrThrow({ where: { id: p.showId } });
   // Zuerst die neuen Plätze sichern – sind sie weg, bleibt die alte Buchung unverändert
-  const hold = await reservieren(p.showId, p.seats);
+  const hold = await reservieren(p.showId, p.seats, { vorOrt: p.vorOrt });
   let voucherCode: string | undefined;
   try {
     const storno = await stornieren({

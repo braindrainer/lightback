@@ -10,6 +10,7 @@ import { Verlauf } from '@/components/Verlauf';
 import { AktionForm, Absenden } from '@/components/verkauf/form';
 import { AktionKnopf, KundeFormular, NotizFormular, StornoDialog, UmbuchungDialog, ZahlungErhalten } from '@/components/verkauf/BestellungAktionen';
 import { showOptionen } from '@/components/verkauf/showOptionen';
+import { gastMeta } from '@/lib/gaeste';
 import { ART_NAME, GRUND_NAME, KANAL_NAME, KAT_NAME, METHODE_NAME, ZAHLART_NAME } from '@/components/verkauf/texte';
 import { kundeSpeichern, notizSpeichern, rechnungErstellenAktion, rechnungSendenAktion, reservierungAufheben, stornoAktion, ticketsSenden, umbuchungAktion, zahlungErhalten } from '../actions';
 
@@ -60,7 +61,9 @@ export default async function Bestellung({ params }: { params: Promise<{ id: str
   const offen = o.totalCents - o.voucherCents;
   const darfRechnung = hat(u, 'leitung', 'buchhaltung');
   const buchhaltung = hat(u, 'buchhaltung');
-  const rechnungFehlt = ['bezahlt', 'teilstorniert'].includes(o.status) && !o.invoices.some((i) => i.kind === 'rechnung');
+  // Freikarten (0 €) bekommen keine Rechnung
+  const rechnungFehlt = ['bezahlt', 'teilstorniert'].includes(o.status) && o.totalCents > 0 && !o.invoices.some((i) => i.kind === 'rechnung');
+  const gast = gastMeta(o.meta);
 
   return (
     <>
@@ -147,7 +150,7 @@ export default async function Bestellung({ params }: { params: Promise<{ id: str
           </ul>
         ) : (
           <div className="px-5 pb-5">
-            <Empty>{rechnungFehlt ? 'Zu dieser bezahlten Bestellung gibt es noch keine Rechnung.' : 'Die Rechnung entsteht mit dem Zahlungseingang.'}</Empty>
+            <Empty>{o.totalCents === 0 ? 'Freikarten (0 €): keine Rechnung, keine Buchung.' : rechnungFehlt ? 'Zu dieser bezahlten Bestellung gibt es noch keine Rechnung.' : 'Die Rechnung entsteht mit dem Zahlungseingang.'}</Empty>
             {rechnungFehlt && darfRechnung && <AktionKnopf action={rechnungErstellenAktion.bind(null, o.id)} className="btn-primary">Rechnung erstellen</AktionKnopf>}
           </div>
         )}
@@ -208,6 +211,18 @@ export default async function Bestellung({ params }: { params: Promise<{ id: str
         ) : <Empty>Keine E-Mails.</Empty>}
       </Abschnitt>
 
+      {gast && (
+        <section className="card mb-6 p-5" aria-labelledby="h-gast">
+          <h2 id="h-gast" className="h2 mb-2">Gästeliste</h2>
+          <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
+            <dt className="text-muted">Grund</dt><dd>{gast.grund}{gast.notiz ? ` – ${gast.notiz}` : ''}</dd>
+            <dt className="text-muted">Zustellung</dt><dd>{[gast.mail ? 'per E-Mail' : '', gast.hinterlegt ? 'an der Kassa hinterlegt' : ''].filter(Boolean).join(' und ')}</dd>
+            <dt className="text-muted">Abgeholt</dt><dd>{gast.abgeholtAm ? `${fmtDatumZeit(new Date(gast.abgeholtAm))}${gast.abgeholtVon ? ` von ${gast.abgeholtVon}` : ''}` : gast.hinterlegt ? 'noch nicht' : '–'}</dd>
+            <dt className="text-muted">Begleitung</dt><dd>{gast.begleitung ? 'erlaubt (+1 Karte)' : 'nein'}</dd>
+          </dl>
+          <Link href={`/vorstellungen/${o.showId}/gaeste`} className="mt-2 inline-block text-sm underline underline-offset-4">Zur Gästeliste der Vorstellung</Link>
+        </section>
+      )}
       <section className="card mb-6 p-5" aria-label="Notiz"><NotizFormular action={notizSpeichern.bind(null, o.id)} note={o.note} /></section>
 
       <Verlauf ziele={[

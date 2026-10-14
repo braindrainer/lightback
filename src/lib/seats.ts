@@ -129,18 +129,20 @@ async function mitWiederholung<T>(showId: string, seatIds: string[], f: () => Pr
   }
 }
 
-/** Online bis Beginn; Abendkasse (vorOrt) bis zum Ende der Vorstellung */
-async function showPruefen(showId: string, vorOrt = false) {
+/** Online bis Beginn; Abendkasse (vorOrt) bis zum Ende der Vorstellung. Gästeliste auch bei pausiertem/geplantem Verkauf. */
+async function showPruefen(showId: string, vorOrt = false, gast = false) {
   const show = await db.show.findUnique({ where: { id: showId }, select: { status: true, startsAt: true, durationMin: true } });
-  const schluss = vorOrt && show ? new Date(show.startsAt.getTime() + show.durationMin * 60e3) : show?.startsAt;
-  if (!show || show.status !== 'verkauf' || !schluss || schluss < new Date()) throw new Error('Für diese Vorstellung ist kein Verkauf möglich');
+  const schluss = (vorOrt || gast) && show ? new Date(show.startsAt.getTime() + show.durationMin * 60e3) : show?.startsAt;
+  const statusOk = show && (show.status === 'verkauf' || (gast && ['pausiert', 'geplant'].includes(show.status)));
+  if (!show || !statusOk || !schluss || schluss < new Date()) throw new Error('Für diese Vorstellung ist kein Verkauf möglich');
 }
 
 /** Reservierung anlegen (alle Sitze oder keiner) */
-export async function reservieren(showId: string, seats: { seatId: string; art: string }[], opt: { vorOrt?: boolean } = {}) {
-  if (!seats.length || seats.length > MAX_TICKETS) throw new Error(`1 bis ${MAX_TICKETS} Plätze`);
+export async function reservieren(showId: string, seats: { seatId: string; art: string }[], opt: { vorOrt?: boolean; gast?: boolean; max?: number } = {}) {
+  const max = opt.max ?? MAX_TICKETS;
+  if (!seats.length || seats.length > max) throw new Error(`1 bis ${max} Plätze`);
   for (const s of seats) if (!SITZ[s.seatId]) throw new Error(`Unbekannter Platz ${s.seatId}`);
-  await showPruefen(showId, opt.vorOrt);
+  await showPruefen(showId, opt.vorOrt, opt.gast);
   gelegentlichAufraeumen();
   const token = randomBytes(24).toString('base64url');
   const expiresAt = new Date(Date.now() + HOLD_MIN * 60e3);

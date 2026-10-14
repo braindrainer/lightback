@@ -62,6 +62,41 @@ Fehler lauten „Lightback-Schutz: …“. Nie Trigger abschwächen, sondern Auf
 Grenzen: Wer Superuser-Rechte auf der Datenbank hat, kann Trigger entfernen – das deckt die Hash-Kette zusammen mit den extern
 abgelegten Tagesankern auf. Beim ersten Start werden ältere Einträge ohne Hash einmalig in `seq`-Reihenfolge versiegelt.
 
+## Abläufe rund um eine Vorstellung
+Hilfe fürs Team: `/hilfe/vorstellung`. Logik in den Lib-Funktionen, alle Aktionen mit Rolle, zod und Protokoll.
+
+| Fall | Wo | Logik |
+|---|---|---|
+| Freikarten / Gästeliste | `/vorstellungen/[id]/gaeste`, Druck A4 `/vorstellungen/[id]/gaeste/druck` | `src/lib/gaeste.ts` |
+| Hinterlegte Karten ausgeben | Kassa → Gäste & Tickets (`/kassa/gaeste`), 80-mm-Druck `/kassa/gaeste/druck/[id]` | `gaeste.gastAusgeben` |
+| Namenssuche, „Alle einlassen“, Einlass verweigern | Scanner (`/einlass`), API `einlass/suche`, `manuell`, `verweigern` | `einlass.suchen`, `manuellEinlassen`, `verweigern` |
+| Falsche Vorstellung → umbuchen | Scanner (roter Bildschirm), API `einlass/umbuchen` | `einlass.umbuchenAmEinlass` → `umbuchung.umbuchen` |
+| Umsetzen / ermäßigt → Vollpreis | Ticketseite, `/kassa/gaeste/ticket/[id]` (mit Aufpreis), `/einlass/umsetzen/[id]` | `src/lib/umsetzen.ts`, `kassa.aufpreisKassieren` |
+| Im Saal / Anwesenheitsliste | Scanner, Vorstellungsseite, `/vorstellungen/[id]/anwesenheit` | `einlass.stand` |
+| Nachricht an alle Gäste | Vorstellungsseite | `vorstellung.nachrichtAnGaeste` (Vorlage `info`, 5 Min. Sperre) |
+| Abbruch während der Vorstellung | Vorstellungsseite (ab Einlassbeginn) | `vorstellung.vorstellungAbbrechen` → `orders.stornieren` |
+| Unbezahlte Reservierungen verfallen | Cron, Anzeige auf der Vorstellungsseite | `cron.reservierungenVerfallen` (`Settings.reservierungVerfallMin`, Standard 60) |
+| No-Show | Vorstellungsseite, Statistik | `vorstellung.noShow`, `statistik.vorOrtStatistik` |
+
+Daten (alle Felder additiv):
+- `Order.channel = 'gast'`, `Order.meta.gast = { grund, notiz, mail, hinterlegt, begleitung, abgeholtAm, abgeholtVon }`, Tickets `art = 'frei'`, 0 €.
+  „Begleitung (+1)“ ist eine zusätzliche Karte (zählt für Saal und Einlass). Rollstuhlplatz-Tickets enthalten den Begleitsitz schon.
+- `Show.freikartenLimit` (Kontingent, leer = ohne Grenze; Überschreiten nur mit Hinweis), `Show.abgebrochenAt`, `Show.abbruchGrund`.
+- `CheckIn.method` (leer = Scan, `manuell`, `umbuchung`), `CheckIn.reason` (bei `result = 'verweigert'`). Verweigern lässt das Ticket gültig.
+- `Settings.reservierungVerfallMin`, `Settings.reservierungVerfallMail`.
+
+Buchhaltung:
+- Freikarten: `orders.bezahlt` mit Anbieter `gast` und 0 € – keine Zahlung (`Payment` nur bei Betrag > 0), keine Rechnung
+  (`rechnungFuerBestellung` überspringt 0-€-Bestellungen), keine Buchung (`buchen` legt bei 0 nichts an). Kein Kassabeleg beim Ausgeben.
+- Aufpreis (Umsetzen in höhere Kategorie, ermäßigt → Vollpreis): Kassabeleg mit Position `category: 'ticket-aufpreis'`, gebucht über
+  `bucheKassabeleg` als Ticketerlös 13 % auf 4000 (Leistung wird jetzt erbracht). `Ticket.priceCents` bleibt der über die Bestellung bezahlte
+  Preis, sonst stünde der Aufpreis in der Leistungsabgrenzung doppelt. Storno des Belegs bucht zurück und setzt eine reine Tarifänderung
+  zurück; ein Platzwechsel bleibt bestehen.
+- Günstigere Kategorie mit Gutschein: wie Storno als Gutschein (`bucheStorno`, 3490), `Ticket.priceCents` sinkt um die Differenz.
+- `stornieren` erkennt selbst, ob die Leistung schon abgegrenzt ist (`journalEntry source 'leistung'`), und bucht dann gegen 4000 statt 3480
+  (`nachLeistung`). Abbruch: `mitEingelassen` storniert auch eingelassene Tickets; `gutscheinProzent` < 100 → Gutschein nur über den Anteil,
+  der Rest bleibt Erlös (vor der Abgrenzung wird er von 3480 auf 4000 umgebucht); die Stornorechnung lautet dann auf den Gutscheinbetrag.
+
 ## Prüfen
 - `npx tsc --noEmit`, `npx next build`.
 

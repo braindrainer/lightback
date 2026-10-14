@@ -172,6 +172,36 @@ async function bestand(tx: Tx, items: Position[], richtung: 1 | -1) {
   for (const i of items) if (i.productId) await tx.product.updateMany({ where: { id: i.productId, stock: { not: null } }, data: { stock: { increment: richtung * i.quantity } } });
 }
 
+// ─────────── Aufzahlung zu einem Ticket (Umsetzen in höhere Kategorie, ermäßigt → Vollpreis) ───────────
+
+/**
+ * Beleg über einen Aufpreis. Anders als Abendkasse-Tickets (die bucht orders.bezahlt über 3480) wird der Aufpreis
+ * hier direkt als Ticketerlös 13 % auf 4000 gebucht (bucheKassabeleg, ERLOESKONTO[13]): Die Leistung wird heute
+ * erbracht, und die Leistungsabgrenzung (vorstellungenAbrechnen) erfasst nur Ticket.priceCents – der Preis am
+ * Ticket bleibt deshalb unverändert, sonst stünde der Aufpreis doppelt im Erlös.
+ */
+export async function aufpreisKassieren(p: { registerId: string; sessionId: string; user: Nutzer; payment: Zahlart; givenCents?: number | null; position: Position }) {
+  await offeneSchicht(p.sessionId, p.registerId);
+  const reg = await db.register.findUniqueOrThrow({ where: { id: p.registerId } });
+  if (!reg.active) throw new Error('Kasse außer Betrieb');
+  if (!reg.startedAt) throw new Error('Startbeleg fehlt – bitte in der Einrichtung erstellen.');
+  const total = p.position.quantity * p.position.unitCents;
+  let given: number | null = null;
+  let change: number | null = null;
+  if (p.payment === 'bar') {
+    given = p.givenCents ?? total;
+    if (given < total) throw new Error('Der gegebene Betrag reicht nicht.');
+    change = given - total;
+  }
+  const beleg = await belegErstellen({
+    registerId: reg.id, type: 'standard', items: [p.position], payment: p.payment, givenCents: given, changeCents: change,
+    cashier: { id: p.user.id, name: p.user.name }, sessionId: p.sessionId,
+    buchen: (tx, b) => bucheKassabeleg(tx, { id: b.id, number: belegRef(reg.kassenId, b.number), date: b.createdAt, payment: p.payment, bruttoJeSatz: jeSatz([p.position]) }),
+  });
+  await audit(p.user, 'kassa_verkauf', 'receipt', beleg.id, { kasse: reg.kassenId, sessionId: p.sessionId, aufpreis: p.position.aufpreis, signaturAusgefallen: beleg.signerFailed || undefined }, { nachher: { number: beleg.number, type: beleg.type, totalCents: beleg.totalCents, payment: beleg.payment, givenCents: beleg.givenCents, changeCents: beleg.changeCents, items: beleg.items, signatur: beleg.signature.slice(-24) } });
+  return beleg;
+}
+
 // ─────────── Storno ───────────
 
 export async function stornoBeleg(p: { receiptId: string; grund: string; user: Nutzer; sessionId: string }) {
@@ -198,6 +228,14 @@ export async function stornoBeleg(p: { receiptId: string; grund: string; user: N
       // gegen 4880 aus; die Auszahlung aus der Kassa (4880 an Kassa/Terminal) bucht unten der Stornobeleg.
       await stornieren({ orderId: orig.orderId, methode: 'keine', grund: 'sonstiges', notiz: `Kassastorno Beleg ${belegRef(orig.register.kassenId, orig.number)}: ${p.grund} – an der Kassa erstattet`, userId: p.user.id, mail: false, fristIgnorieren: true });
     }
+  }
+
+  // Aufpreis ermäßigt → Vollpreis: Ticketart zurücksetzen. Ein Platzwechsel bleibt bestehen (ggf. neu umsetzen).
+  const tarif = items.filter((i) => i.category === 'ticket-aufpreis' && i.aufpreis && i.aufpreis.seatVorher === i.aufpreis.seatNachher);
+  for (const i of tarif) {
+    const a = i.aufpreis!;
+    const n = await db.ticket.updateMany({ where: { id: a.ticketId, art: a.artNachher, status: { not: 'storniert' } }, data: { art: a.artVorher } });
+    if (n.count) await audit(p.user, 'ticket_tarif_zurueck', 'ticket', a.ticketId, { beleg: orig.id, grund: p.grund }, { vorher: { art: a.artNachher }, nachher: { art: a.artVorher } });
   }
 
   const neg = items.map((i) => ({ ...i, quantity: -i.quantity }));

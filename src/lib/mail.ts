@@ -74,6 +74,38 @@ export const STANDARD_VORLAGEN: Record<string, { subject: string; body: string }
 <p>{{erstattung}}</p>
 <p>Gerne buchen wir Sie auf einen anderen Termin um: Antworten Sie einfach auf diese E-Mail.</p>`,
   },
+  freikarte: {
+    subject: 'Ihre Einladung zu Light of Creation – {{datum}}',
+    body: `<h1 style="font-size:24px;margin:0 0 12px">Sie sind eingeladen, {{vorname}}!</h1>
+<p>Wir freuen uns, Sie am <strong>{{datum}} um {{uhrzeit}} Uhr</strong> in der Votivkirche, Rooseveltplatz, 1090 Wien, begrüßen zu dürfen.</p>
+{{tickets_html}}
+<p>Zeigen Sie den QR-Code beim Einlass am Handy oder ausgedruckt. Einlass ab 30 Minuten vor Beginn.</p>
+<p><strong>Buchungsnummer:</strong> {{bestellnummer}}</p>
+<p>Falls Sie verhindert sind, geben Sie uns bitte kurz Bescheid – dann können wir die Plätze weitergeben.</p>
+<p><strong>Hinweis:</strong> Die Show verwendet Stroboskop- und Blitzlichteffekte.</p>`,
+  },
+  info: {
+    subject: '{{betreff}}',
+    body: `<h1 style="font-size:24px;margin:0 0 12px">{{betreff}}</h1>
+<p>Guten Tag {{vorname}} {{nachname}},</p>
+{{text_html}}
+<p>Ihre Vorstellung: <strong>{{datum}}, {{uhrzeit}} Uhr</strong>, Votivkirche, Rooseveltplatz, 1090 Wien.</p>`,
+  },
+  abbruch: {
+    subject: 'Abbruch der Vorstellung am {{datum}}',
+    body: `<h1 style="font-size:24px;margin:0 0 12px">Ihre Vorstellung musste abgebrochen werden</h1>
+<p>Guten Tag {{vorname}} {{nachname}},</p>
+<p>die Vorstellung am {{datum}} um {{uhrzeit}} Uhr mussten wir leider abbrechen. {{grund}} Wir bitten um Entschuldigung.</p>
+<p>{{erstattung}}</p>
+<p>Den Gutschein können Sie im Webshop oder an der Kassa für einen neuen Termin einlösen.</p>`,
+  },
+  reservierung_verfallen: {
+    subject: 'Ihre Reservierung {{bestellnummer}} ist verfallen',
+    body: `<h1 style="font-size:24px;margin:0 0 12px">Ihre Reservierung ist verfallen</h1>
+<p>Guten Tag {{vorname}} {{nachname}},</p>
+<p>Ihre Reservierung {{bestellnummer}} für die Vorstellung am {{datum}} um {{uhrzeit}} Uhr war bis {{frist}} Uhr nicht bezahlt. Die Plätze haben wir deshalb freigegeben.</p>
+<p>Restkarten gibt es an der Abendkasse, solange Plätze frei sind.</p>`,
+  },
   erinnerung: {
     subject: 'Morgen bei Light of Creation',
     body: `<h1 style="font-size:24px;margin:0 0 12px">Bis morgen, {{vorname}}!</h1>

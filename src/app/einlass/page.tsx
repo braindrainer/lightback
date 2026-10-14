@@ -20,7 +20,7 @@ export default async function EinlassSeite() {
     <>
       <h1 className="sr-only">Einlass-Scanner</h1>
       <EinlassApp
-        shows={shows.map((s) => ({ id: s.id, label: `${fmtTag(s.startsAt)}, ${fmtZeit(s.startsAt)} Uhr`, tag: fmtTag(s.startsAt), zeit: fmtZeit(s.startsAt) }))}
+        shows={shows.map((s) => ({ id: s.id, label: `${fmtTag(s.startsAt)}, ${fmtZeit(s.startsAt)} Uhr`, tag: fmtTag(s.startsAt), zeit: fmtZeit(s.startsAt), beginn: s.startsAt.toISOString() }))}
         standard={aktuell?.id ?? ''} benutzer={u.name} appHost={istAppHost(await headers())} />
     </>
   );

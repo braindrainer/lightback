@@ -2,7 +2,7 @@ import { requireRole } from '@/lib/auth';
 import { getSettings } from '@/lib/db';
 import { Formular } from '@/components/system/Formular';
 import { PageHeader } from '@/components/ui';
-import { demoSpeichern, firmaSpeichern, mailSpeichern, rechnungenSpeichern, zahlungSpeichern } from './actions';
+import { demoSpeichern, firmaSpeichern, mailSpeichern, rechnungenSpeichern, vorstellungenSpeichern, zahlungSpeichern } from './actions';
 import { MailTest } from './MailTest';
 
 export const dynamic = 'force-dynamic';
@@ -54,7 +54,7 @@ function Url({ label, url, hinweis }: { label: string; url: string; hinweis?: st
   );
 }
 
-const ABSCHNITTE = [['firma', 'Firma'], ['rechnungen', 'Rechnungen'], ['email', 'E-Mail'], ['zahlung', 'Zahlungsanbieter'], ['demo', 'Demo-Modus']] as const;
+const ABSCHNITTE = [['firma', 'Firma'], ['rechnungen', 'Rechnungen'], ['vorstellungen', 'Vorstellungen'], ['email', 'E-Mail'], ['zahlung', 'Zahlungsanbieter'], ['demo', 'Demo-Modus']] as const;
 
 export default async function Einstellungen() {
   await requireRole('admin');
@@ -94,6 +94,14 @@ export default async function Einstellungen() {
             <Feld name="orderPrefix" label="Präfix Bestellnummer" wert={s.orderPrefix} pflicht hinweis={`Ergibt ${s.orderPrefix}-${new Date().getFullYear()}-000123`} />
           </div>
           <p className="mt-3 text-xs text-muted">Bestehende Nummern bleiben unverändert. Rechnungsnummern laufen lückenlos weiter.</p>
+        </Formular>
+
+        <Formular action={vorstellungenSpeichern} knopf="Speichern" className="card p-5">
+          <h2 id="vorstellungen" className="h2 mb-3 scroll-mt-6">Vorstellungen</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Feld name="reservierungVerfallMin" label="Unbezahlte Reservierungen verfallen (Minuten vor Beginn)" wert={s.reservierungVerfallMin} typ="number" min={0} max={1440} pflicht hinweis="Telefon, Rechnung, Zahlungslink. Danach sind die Plätze frei für die Abendkasse. 0 = erst zu Beginn." />
+            <label className="flex min-h-10 items-center gap-2 self-center text-sm"><input type="checkbox" name="reservierungVerfallMail" defaultChecked={s.reservierungVerfallMail} className="h-4 w-4 accent-[#6e5118]" /> Kund:in per E-Mail informieren</label>
+          </div>
         </Formular>
 
         <section aria-labelledby="email" className="card p-5">

@@ -1,10 +1,10 @@
 // Bezeichnungen für den Verkauf (Anzeige)
 export const KAT_NAME: Record<string, string> = { I: 'Kategorie I', II: 'Kategorie II', R: 'Rollstuhlplatz' };
 export const ART_NAME: Record<string, string> = { normal: 'Vollpreis', ermaessigt: 'Ermäßigt', frei: 'Freikarte', rollstuhl: 'Rollstuhl + Begleitung' };
-export const KANAL_NAME: Record<string, string> = { web: 'Webshop', telefon: 'Telefon', abendkasse: 'Abendkasse', partner: 'Partner' };
+export const KANAL_NAME: Record<string, string> = { web: 'Webshop', telefon: 'Telefon', abendkasse: 'Abendkasse', partner: 'Partner', gast: 'Gästeliste' };
 export const ZAHLART_NAME: Record<string, string> = {
   hobex: 'Karte online (hobex)', stripe: 'Stripe', paypal: 'PayPal', applepay: 'Apple Pay', gutschein: 'Gutschein',
-  bar: 'Bar', terminal: 'Karte (Terminal)', rechnung: 'Rechnung / Überweisung', partner: 'Partner', zahlungslink: 'Zahlungslink',
+  bar: 'Bar', terminal: 'Karte (Terminal)', rechnung: 'Rechnung / Überweisung', partner: 'Partner', zahlungslink: 'Zahlungslink', gast: 'Freikarte (0 €)',
 };
 export const METHODE_NAME: Record<string, string> = { zahlungsmittel: 'Erstattung aufs Zahlungsmittel', gutschein: 'Gutschein', keine: 'Keine Erstattung' };
 export const GRUND_NAME: Record<string, string> = { kunde: 'Wunsch der Kund:in', kulanz: 'Kulanz', absage: 'Absage', umbuchung: 'Umbuchung', partner: 'Partner', sonstiges: 'Sonstiges' };

@@ -15,14 +15,21 @@ type Antwort = {
   ticket?: { code: string; seatId: string; sitz: string; kat: string; art: string };
   vorher?: { am: string; von: string | null };
   vorstellung?: string;
+  umbuchbar?: boolean;
   fehler?: string;
   offline?: boolean;
 };
+type Treffer = {
+  id: string; number: string; channel: string; name: string; firma: string; email: string;
+  gast: { grund: string; hinterlegt: boolean; abgeholt: boolean } | null;
+  tickets: { id: string; code: string; seatId: string; sitz: string; kat: string; art: string; status: string; checkedInAt: string | null }[];
+};
+const GRUENDE = ['Kind unter 6 Jahren', 'Alkohol oder Drogen (laut AGB)', 'Hausverbot', 'Ermäßigung ohne Nachweis – an der Kassa aufzahlen', 'Sonstiges'] as const;
 type Eintrag = Antwort & { id: string; am: string };
 type ListenTicket = { code: string; seatId: string; kat: string; art: string; status: string; checkedInAt?: string | null };
 type Warteschlange = { id: string; qr?: string; code?: string; showId: string; scannedAt: string }[];
 type Konflikt = { id: string; result: string; code?: string; ticket?: { sitz: string }; vorher?: { am: string; von: string | null } };
-type Show = { id: string; label: string; tag: string; zeit: string };
+type Show = { id: string; label: string; tag: string; zeit: string; beginn: string };
 type Einst = { ton: boolean; vibration: boolean };
 
 const TITEL: Record<Ergebnis, string> = {
@@ -69,7 +76,7 @@ function hinweise(a: Antwort): string[] {
 export default function EinlassApp({ shows, standard, benutzer, appHost }: { shows: Show[]; standard: string; benutzer: string; appHost: boolean }) {
   const [showId, setShowId] = useState(standard);
   const [online, setOnline] = useOnline();
-  const [zaehler, setZaehler] = useState<{ eingelassen: number; verkauft: number } | null>(null);
+  const [zaehler, setZaehler] = useState<{ eingelassen: number; verkauft: number; imSaal?: number } | null>(null);
   const [liste, setListe] = useState<Record<string, ListenTicket>>({});
   const [listeStand, setListeStand] = useState<string | null>(null);
   const [queue, setQueue] = useState<Warteschlange>([]);
@@ -81,7 +88,15 @@ export default function EinlassApp({ shows, standard, benutzer, appHost }: { sho
   const [eingabe, setEingabe] = useState('');
   const [meldung, setMeldung] = useState('');
   const [jetzt, setJetzt] = useState(Date.now());
-  const [blatt, setBlatt] = useState<null | 'show' | 'code' | 'verlauf' | 'einst'>(null);
+  const [blatt, setBlatt] = useState<null | 'show' | 'code' | 'verlauf' | 'einst' | 'suche' | 'verweigern' | 'umbuchen'>(null);
+  const [suche, setSuche] = useState('');
+  const [treffer, setTreffer] = useState<Treffer[] | null>(null);
+  const [sucheLaeuft, setSucheLaeuft] = useState(false);
+  const [sucheMeldung, setSucheMeldung] = useState('');
+  const [ziel, setZiel] = useState<{ ticketId?: string; code?: string; sitz?: string; checkInId?: string; vorstellung?: string } | null>(null);
+  const [grund, setGrund] = useState<string>(GRUENDE[0]);
+  const [notiz, setNotiz] = useState('');
+  const [arbeitet, setArbeitet] = useState(false);
   const [einst, setEinst] = useState<Einst>({ ton: true, vibration: true });
   const busy = useRef(false);
   const zuletzt = useRef<{ code: string; am: number }>({ code: '', am: 0 });
@@ -168,7 +183,7 @@ export default function EinlassApp({ shows, standard, benutzer, appHost }: { sho
   }, []);
   useEffect(() => {
     if (!antwort) return;
-    const t = setTimeout(() => setAntwort(null), antwort.result === 'ok' && antwort.ticket?.art !== 'ermaessigt' ? 2500 : 4000);
+    const t = setTimeout(() => setAntwort(null), antwort.result === 'falsche_vorstellung' && antwort.umbuchbar ? 10000 : antwort.result === 'ok' && antwort.ticket?.art !== 'ermaessigt' ? 3500 : 5000);
     return () => clearTimeout(t);
   }, [antwort]);
 
@@ -222,6 +237,88 @@ export default function EinlassApp({ shows, standard, benutzer, appHost }: { sho
     } catch { setMeldung('Rücknahme nur online möglich.'); }
   }
 
+  const post = async (pfad: string, body: object) => {
+    const r = await fetch(pfad, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, showId, deviceId: geraet.current }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.fehler ?? 'Fehler – bitte erneut versuchen.');
+    return j;
+  };
+
+  async function sucheStarten(e?: React.FormEvent) {
+    e?.preventDefault();
+    const q = suche.trim();
+    if (q.length < 2 || !showId) return setSucheMeldung('Bitte mindestens 2 Zeichen eingeben.');
+    setSucheLaeuft(true);
+    setSucheMeldung('');
+    try {
+      const r = await fetch(`/api/einlass/suche?showId=${encodeURIComponent(showId)}&q=${encodeURIComponent(q)}`, { cache: 'no-store' });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.fehler ?? 'Suche fehlgeschlagen');
+      setTreffer(j.treffer);
+      setSucheMeldung(j.treffer.length ? `${j.treffer.length} ${j.treffer.length === 1 ? 'Buchung' : 'Buchungen'} gefunden.` : 'Nichts gefunden – Schreibweise oder Vorstellung prüfen.');
+    } catch (x) {
+      setSucheMeldung(navigator.onLine ? (x as Error).message : 'Die Namenssuche geht nur online.');
+    } finally {
+      setSucheLaeuft(false);
+    }
+  }
+
+  async function einlassen(ticketIds: string[]) {
+    if (!ticketIds.length || arbeitet) return;
+    setArbeitet(true);
+    try {
+      const j = await post('/api/einlass/manuell', { ticketIds }) as { ok: string[]; abgelehnt: { code: string; grund: string }[] };
+      rueckmeldung(j.ok.length > 0, false, einstRef.current);
+      if (j.ok.length) setZaehler((z) => (z ? { ...z, eingelassen: z.eingelassen + j.ok.length } : z));
+      void standLaden(showId);
+      void listeLaden(showId);
+      await sucheStarten();
+      setSucheMeldung(`${j.ok.length} eingelassen${j.abgelehnt.length ? `, ${j.abgelehnt.length} nicht (${j.abgelehnt.map((a) => a.grund).join(', ')})` : ''}.`);
+    } catch (x) {
+      setSucheMeldung((x as Error).message);
+    } finally {
+      setArbeitet(false);
+    }
+  }
+
+  async function verweigernSenden(e: React.FormEvent) {
+    e.preventDefault();
+    if (!ziel || arbeitet) return;
+    setArbeitet(true);
+    try {
+      const j = await post('/api/einlass/verweigern', { ticketId: ziel.ticketId, code: ziel.code, checkInId: ziel.checkInId, grund, notiz: notiz || undefined }) as { zurueck: boolean };
+      setBlatt(treffer && !ziel.checkInId ? 'suche' : null);
+      const text = `Einlass verweigert${ziel.sitz ? ` (${ziel.sitz})` : ''}: ${grund}.${j.zurueck ? ' Einlass zurückgenommen.' : ''} Das Ticket bleibt gültig.`;
+      setMeldung(text);
+      setSucheMeldung(text);
+      if (j.zurueck) setLetzterOk(null);
+      void standLaden(showId);
+      void listeLaden(showId);
+    } catch (x) {
+      setMeldung((x as Error).message);
+      setBlatt(null);
+    } finally {
+      setArbeitet(false);
+    }
+  }
+
+  async function umbuchenSenden() {
+    if (!ziel?.code || arbeitet) return;
+    setArbeitet(true);
+    try {
+      const j = await post('/api/einlass/umbuchen', { code: ziel.code, bestaetigt: true }) as { plaetze: string[]; bestellung: string; restGutschein: number; gutschein?: string };
+      setBlatt(null);
+      zeigen({ result: 'ok', code: ziel.code, ticket: { code: ziel.code, seatId: '', sitz: `Neuer Platz: ${j.plaetze.join(', ')}`, kat: 'R', art: 'normal' }, fehler: `Umgebucht (${j.bestellung})${j.restGutschein ? ` – Restguthaben ${(j.restGutschein / 100).toFixed(2).replace('.', ',')} € auf Gutschein ${j.gutschein}` : ''}` });
+      void standLaden(showId);
+      void listeLaden(showId);
+    } catch (x) {
+      setBlatt(null);
+      zeigen({ result: 'fehler', fehler: (x as Error).message });
+    } finally {
+      setArbeitet(false);
+    }
+  }
+
   const show = shows.find((s) => s.id === showId);
   const rueckOffen = letzterOk && jetzt - letzterOk.am < RUECKNAHME_MS;
   const verkauft = zaehler?.verkauft ?? Object.keys(liste).length;
@@ -252,7 +349,7 @@ export default function EinlassApp({ shows, standard, benutzer, appHost }: { sho
       <div className="shrink-0 px-3 pb-2">
         <div className="flex items-baseline justify-between gap-2 text-sm">
           <span><span className="num text-2xl font-bold">{eingelassen}</span><span className="text-white/80"> von </span><span className="num font-semibold">{verkauft || '–'}</span><span className="text-white/80"> eingelassen</span></span>
-          <span className="num text-lg font-semibold">{verkauft ? `${prozent} %` : ''}</span>
+          <span className="text-right"><span className="text-white/80">Im Saal </span><span className="num text-lg font-semibold">{zaehler?.imSaal ?? eingelassen}</span>{verkauft ? <span className="num text-white/80"> · {prozent} %</span> : null}</span>
         </div>
         <div role="progressbar" aria-label="Eingelassen von verkauft" aria-valuemin={0} aria-valuemax={verkauft || 0} aria-valuenow={eingelassen} aria-valuetext={`${eingelassen} von ${verkauft} eingelassen`}
           className="mt-1 h-2 overflow-hidden rounded-full bg-white/15">
@@ -282,33 +379,48 @@ export default function EinlassApp({ shows, standard, benutzer, appHost }: { sho
         {queue.length > 0 && online && (
           <button type="button" onClick={abgleichen} className="min-h-12 rounded-2xl bg-amber-400 px-4 text-base font-semibold text-black">{queue.length} Offline-Scans jetzt abgleichen</button>
         )}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <button type="button" onClick={() => { tonFreischalten(); setBlatt('code'); }} className={`${knopf} bg-gold text-nacht`}>
-            <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" /></svg>
-            Code eingeben
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6 max-[380px]:hidden" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="6" width="20" height="12" rx="2" /><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" /></svg>
+            Code
+          </button>
+          <button type="button" onClick={() => { tonFreischalten(); setSucheMeldung(''); setBlatt('suche'); }} className={`${knopf} border border-white/25 bg-white/10 hover:bg-white/15`}>
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6 max-[380px]:hidden" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M20 20l-4-4" /></svg>
+            Name
           </button>
           <button type="button" onClick={() => setBlatt('verlauf')} className={`${knopf} border border-white/25 bg-white/10 hover:bg-white/15`}>
-            <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2" /></svg>
-            Verlauf{konflikte.length ? <span className="rounded-full bg-red-500 px-2 text-sm text-white">{konflikte.length}</span> : verlauf.length ? <span className="num text-white/80">({verlauf.length})</span> : null}
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="size-6 max-[380px]:hidden" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2" /></svg>
+            <span>Verlauf</span>{konflikte.length ? <span className="rounded-full bg-red-500 px-2 text-sm text-white">{konflikte.length}</span> : verlauf.length ? <span className="num text-white/80">({verlauf.length})</span> : null}
           </button>
         </div>
       </div>
 
-      {/* Ergebnis bildschirmfüllend */}
+      {/* Ergebnis bildschirmfüllend: Tippen irgendwo = weiter; Zusatzaktionen als eigene Knöpfe */}
       {antwort && (() => {
         const st = STUFE[stufe(antwort)];
         const titel = antwort.result === 'ok' && antwort.ticket?.art === 'ermaessigt' ? 'Einlass OK – Ausweis prüfen' : TITEL[antwort.result];
+        const seitMin = show && antwort.result === 'ok' ? Math.floor((jetzt - Date.parse(show.beginn)) / 60e3) : -1;
+        const aktion = 'min-h-14 rounded-2xl border-2 border-current px-5 text-lg font-semibold';
         return (
-          <button type="button" onClick={() => setAntwort(null)} aria-label={`${titel} – tippen zum Fortfahren`}
-            className={`fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 p-6 text-center ${st.bg}`}>
-            <span aria-hidden="true" className="grid size-40 place-items-center rounded-full border-[6px] border-current text-[110px] font-bold leading-none">{st.icon}</span>
-            <span role="alert" className="text-4xl font-bold leading-tight">{titel}</span>
+          <div role="dialog" aria-modal="true" aria-labelledby="ergebnis-titel" onClick={() => setAntwort(null)}
+            className={`fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 overflow-y-auto p-6 text-center ${st.bg}`}>
+            <span aria-hidden="true" className="grid size-36 shrink-0 place-items-center rounded-full border-[6px] border-current text-[100px] font-bold leading-none">{st.icon}</span>
+            <span id="ergebnis-titel" role="alert" className="text-4xl font-bold leading-tight">{titel}</span>
             {antwort.ticket && <span className="text-3xl font-semibold">{antwort.ticket.sitz}</span>}
             {antwort.ticket && antwort.ticket.kat !== 'R' && <span className="text-xl">Kategorie {antwort.ticket.kat} · {artName(antwort.ticket.art)}</span>}
             {hinweise(antwort).map((h) => <span key={h} className={`rounded-xl px-5 py-2 text-xl font-semibold ${stufe(antwort) === 'pruefen' ? 'bg-black text-[#f5b400]' : 'bg-black/25'}`}>{h}</span>)}
+            {seitMin > 0 && <span className="rounded-xl bg-black/25 px-5 py-2 text-xl font-semibold">Vorstellung läuft seit {seitMin} Min. – leise zum Platz begleiten</span>}
             {antwort.offline && <span className="text-base">Offline geprüft</span>}
-            <span className="mt-6 text-base">Tippen zum Fortfahren</span>
-          </button>
+            <div className="mt-4 flex flex-wrap justify-center gap-3">
+              <button type="button" autoFocus onClick={() => setAntwort(null)} className={`${aktion} bg-black/20`}>Weiter</button>
+              {antwort.result === 'ok' && !antwort.offline && antwort.ticket && antwort.checkInId && (
+                <button type="button" onClick={(e) => { e.stopPropagation(); setZiel({ code: antwort.ticket!.code, sitz: antwort.ticket!.sitz, checkInId: antwort.checkInId }); setNotiz(''); setGrund(GRUENDE[0]); setAntwort(null); setBlatt('verweigern'); }} className={aktion}>Einlass verweigern</button>
+              )}
+              {antwort.result === 'falsche_vorstellung' && antwort.umbuchbar && online && antwort.code && (
+                <button type="button" onClick={(e) => { e.stopPropagation(); setZiel({ code: antwort.code, sitz: antwort.ticket?.sitz, vorstellung: antwort.vorstellung }); setAntwort(null); setBlatt('umbuchen'); }} className={aktion}>Auf diese Vorstellung umbuchen</button>
+              )}
+            </div>
+          </div>
         );
       })()}
 
@@ -382,6 +494,74 @@ export default function EinlassApp({ shows, standard, benutzer, appHost }: { sho
             </ul>
           </>
         )}
+      </Sheet>
+
+      {/* Namenssuche: Handy vergessen, Gruppen, Schulklassen */}
+      <Sheet dunkel breit offen={blatt === 'suche'} onClose={() => setBlatt(null)} titel="Gast suchen">
+        <form onSubmit={sucheStarten} className="grid gap-2" role="search">
+          <label htmlFor="suche" className="text-sm font-semibold text-white/85">Name, E-Mail, Firma, Buchungsnummer oder Ticketcode</label>
+          <div className="flex gap-2">
+            <input id="suche" type="search" autoFocus value={suche} onChange={(e) => setSuche(e.target.value)} autoComplete="off" enterKeyHint="search"
+              className="min-h-14 min-w-0 flex-1 rounded-2xl border-2 border-white/40 bg-white px-4 text-xl text-nacht" />
+            <button disabled={sucheLaeuft} className="min-h-14 shrink-0 rounded-2xl bg-gold px-5 text-lg font-semibold text-nacht disabled:opacity-60">{sucheLaeuft ? '…' : 'Suchen'}</button>
+          </div>
+        </form>
+        <p role="status" className="mt-2 min-h-6 text-base">{sucheMeldung}</p>
+        <ul className="mt-2 grid gap-3">
+          {(treffer ?? []).map((o) => {
+            const offen = o.tickets.filter((t) => t.status === 'gueltig');
+            return (
+              <li key={o.id} className="rounded-2xl bg-white/5 p-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="text-lg font-semibold">{o.name || 'ohne Namen'}{o.firma ? ` · ${o.firma}` : ''}</h3>
+                  <span className="font-mono text-sm text-white/80">{o.number}</span>
+                </div>
+                {o.gast && <p className="text-sm text-white/85">Gästeliste ({o.gast.grund}){o.gast.hinterlegt && !o.gast.abgeholt ? ' – Karten liegen an der Kassa' : ''}</p>}
+                <ul className="mt-2 grid gap-1.5">
+                  {o.tickets.map((t) => (
+                    <li key={t.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-white/5 px-3 py-2">
+                      <span className="min-w-0 basis-full"><strong>{t.sitz}</strong> <span className="text-sm text-white/80">· {t.kat === 'R' ? 'Rollstuhl' : `Kat. ${t.kat}`} · {artName(t.art)} · {t.status === 'eingelassen' ? `eingelassen${t.checkedInAt ? ` ${zeit(t.checkedInAt)}` : ''}` : t.status === 'storniert' ? 'storniert' : 'offen'}</span></span>
+                      {t.status === 'gueltig' && (
+                        <>
+                          <button type="button" disabled={arbeitet} onClick={() => einlassen([t.id])} className="min-h-11 rounded-xl bg-[#11612f] px-3 font-semibold">Einlassen<span className="sr-only"> {t.sitz}</span></button>
+                          <button type="button" onClick={() => { setZiel({ ticketId: t.id, sitz: t.sitz }); setNotiz(''); setGrund(GRUENDE[0]); setBlatt('verweigern'); }} className="min-h-11 rounded-xl border border-white/30 px-3">Verweigern<span className="sr-only"> {t.sitz}</span></button>
+                        </>
+                      )}
+                      {t.status !== 'storniert' && <a href={`/einlass/umsetzen/${t.id}`} className="inline-flex min-h-11 items-center rounded-xl border border-white/30 px-3">Umsetzen<span className="sr-only"> {t.sitz}</span></a>}
+                    </li>
+                  ))}
+                </ul>
+                {offen.length > 1 && <button type="button" disabled={arbeitet} onClick={() => einlassen(offen.map((t) => t.id))} className="mt-2 min-h-12 w-full rounded-xl bg-[#11612f] text-base font-semibold">Alle einlassen ({offen.length})</button>}
+              </li>
+            );
+          })}
+        </ul>
+      </Sheet>
+
+      {/* Einlass verweigern */}
+      <Sheet dunkel offen={blatt === 'verweigern'} onClose={() => setBlatt(null)} titel={`Einlass verweigern${ziel?.sitz ? `: ${ziel.sitz}` : ''}`}>
+        <form onSubmit={verweigernSenden} className="grid gap-3">
+          <fieldset className="grid gap-1.5">
+            <legend className="mb-1 text-sm font-semibold text-white/85">Grund</legend>
+            {GRUENDE.map((g) => (
+              <label key={g} className="flex min-h-12 items-center gap-3 rounded-xl bg-white/5 px-3 text-base"><input type="radio" name="grund" checked={grund === g} onChange={() => setGrund(g)} className="size-5 accent-[#d9b877]" />{g}</label>
+            ))}
+          </fieldset>
+          {grund.startsWith('Ermäßigung') && <p className="rounded-xl bg-amber-400 px-3 py-2 text-base font-semibold text-black">Bitte zur Kassa schicken: dort auf Vollpreis aufzahlen, danach erneut scannen.</p>}
+          <div><label htmlFor="v-notiz" className="text-sm font-semibold text-white/85">Notiz (optional)</label><input id="v-notiz" value={notiz} onChange={(e) => setNotiz(e.target.value)} maxLength={200} className="min-h-12 w-full rounded-xl bg-white px-3 text-base text-nacht" /></div>
+          <p className="text-sm text-white/85">Das Ticket bleibt gültig.{ziel?.checkInId ? ' Der Einlass von eben wird zurückgenommen.' : ''}</p>
+          <button disabled={arbeitet} className="min-h-14 rounded-2xl bg-[#e05a5a] text-lg font-semibold text-black disabled:opacity-60">{arbeitet ? 'Bitte warten …' : 'Einlass verweigern'}</button>
+        </form>
+      </Sheet>
+
+      {/* Falsche Vorstellung: umbuchen */}
+      <Sheet dunkel offen={blatt === 'umbuchen'} onClose={() => setBlatt(null)} titel="Auf diese Vorstellung umbuchen?">
+        <div className="grid gap-3 text-base">
+          <p>Das Ticket{ziel?.sitz ? ` (${ziel.sitz})` : ''} gilt für <strong>{ziel?.vorstellung ?? 'eine andere Vorstellung'} Uhr</strong>. Es wird storniert und ein neues Ticket für <strong>{show?.label}</strong> in derselben Kategorie ausgestellt – Platz wird automatisch vergeben, der Gast wird gleich eingelassen.</p>
+          <p className="text-white/85">Nur ohne Aufzahlung: ist diese Vorstellung teurer, bitte an die Kassa verweisen.</p>
+          <button type="button" disabled={arbeitet} onClick={umbuchenSenden} className="min-h-14 rounded-2xl bg-gold text-lg font-semibold text-nacht disabled:opacity-60">{arbeitet ? 'Bitte warten …' : 'Ja, umbuchen und einlassen'}</button>
+          <button type="button" onClick={() => setBlatt(null)} className="min-h-12 rounded-2xl border border-white/30 text-base font-semibold">Abbrechen</button>
+        </div>
       </Sheet>
 
       {/* Einstellungen */}

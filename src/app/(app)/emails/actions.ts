@@ -13,7 +13,7 @@ export async function erneutSenden(_p: Ergebnis, fd: FormData): Promise<Ergebnis
   const m = await db.emailLog.findUnique({ where: { id: String(fd.get('id')) } });
   if (!m) return { fehler: 'Mail nicht gefunden.' };
   // Buchungsbestätigung neu erzeugen, damit die QR-Codes als Anhang wieder dabei sind
-  const r = m.template === 'buchung' && m.orderId ? await ticketMail(m.orderId) : await senden({ to: m.to, subject: m.subject, html: m.html, template: m.template, orderId: m.orderId ?? undefined });
+  const r = (m.template === 'buchung' || m.template === 'freikarte') && m.orderId ? await ticketMail(m.orderId) : await senden({ to: m.to, subject: m.subject, html: m.html, template: m.template, orderId: m.orderId ?? undefined });
   await audit(ich, 'mail_erneut', 'email', m.id, { to: m.to, template: m.template, neu: r?.id });
   revalidatePath('/emails');
   if (!r) return { fehler: 'Für diese Bestellung gibt es keine E-Mail-Adresse.' };

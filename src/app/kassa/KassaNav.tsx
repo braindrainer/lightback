@@ -6,6 +6,7 @@ export default function KassaNav({ admin }: { admin: boolean }) {
   const p = usePathname();
   const links = [
     { href: '/kassa', label: 'Verkauf' },
+    { href: '/kassa/gaeste', label: 'Gäste & Tickets' },
     { href: '/kassa/belege', label: 'Belege' },
     { href: '/kassa/schicht', label: 'Schicht' },
     ...(admin ? [{ href: '/kassa/einrichtung', label: 'Einrichtung' }, { href: '/kassa/kassenbuch', label: 'Kassenbuch' }] : []),

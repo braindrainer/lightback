@@ -127,3 +127,18 @@ export async function demoSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebni
   fertig();
   return { ok: demo ? 'Demo-Modus ist an: Zahlungen werden simuliert, E-Mails nicht verschickt.' : 'Demo-Modus ist aus: echte Zahlungen und E-Mails.' };
 }
+
+export async function vorstellungenSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebnis> {
+  const ich = await assertRole('admin');
+  try {
+    const d = z.object({
+      reservierungVerfallMin: z.coerce.number().int('Bitte ganze Minuten angeben.').min(0, 'Mindestens 0 Minuten.').max(1440, 'Höchstens 1440 Minuten (24 Stunden).'),
+      reservierungVerfallMail: z.boolean(),
+    }).parse({ reservierungVerfallMin: txt(fd, 'reservierungVerfallMin'), reservierungVerfallMail: fd.get('reservierungVerfallMail') === 'on' });
+    const alt = await getSettings();
+    await db.settings.update({ where: { id: 1 }, data: d });
+    await audit(ich, 'einstellungen_vorstellungen', 'settings', '1', undefined, aenderung(alt, d));
+    fertig();
+    return { ok: `Gespeichert: unbezahlte Reservierungen verfallen ${d.reservierungVerfallMin} Minuten vor Beginn.` };
+  } catch (e) { return { fehler: fehlerText(e) }; }
+}

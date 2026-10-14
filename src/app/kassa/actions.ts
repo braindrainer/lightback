@@ -8,7 +8,11 @@ import { aenderung, audit, maskieren } from '@/lib/audit';
 import { assertRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { kasseAnlegen, schichtOeffnen, schichtSchliessen, sonderbeleg, stornoBeleg, verkaufen } from '@/lib/kassa';
-import { parseAmountToCents } from '@/lib/money';
+import { gastAusgeben } from '@/lib/gaeste';
+import { formatEur, parseAmountToCents } from '@/lib/money';
+import { SITZ, sitzName } from '@/lib/saal';
+import { PlatzBelegt } from '@/lib/seats';
+import { ticketAendern } from '@/lib/umsetzen';
 import { encrypt } from '@/lib/secret';
 import { KASSE_COOKIE } from './daten';
 
@@ -166,4 +170,45 @@ export async function produktSpeichernAction(f: FormData) {
   }
   revalidatePath('/kassa');
   zurueck(EINR, 'meldung', 'Artikel gespeichert.');
+}
+
+// ─────────── Gäste & Tickets (hinterlegte Freikarten, Umsetzen mit Aufpreis) ───────────
+
+export async function ausgebenAction(f: FormData) {
+  const u = await assertRole('kassa');
+  const orderId = z.string().min(1).max(40).parse(f.get('orderId'));
+  const zurueckZu = String(f.get('zurueck') ?? '/kassa/gaeste');
+  try {
+    await gastAusgeben(orderId, u);
+  } catch (e) {
+    zurueck(zurueckZu.startsWith('/kassa/') ? zurueckZu : '/kassa/gaeste', 'fehler', meldung(e));
+  }
+  revalidatePath('/kassa/gaeste');
+  redirect(`/kassa/gaeste/druck/${orderId}?druck=1`);
+}
+
+const UmsetzenKassa = z.object({
+  ticketId: z.string().min(1).max(40),
+  registerId: z.string().min(1),
+  sessionId: z.string().min(1),
+  seatId: z.string().refine((id) => !!SITZ[id], 'Unbekannter Platz').optional(),
+  art: z.enum(['normal', 'ermaessigt']).optional(),
+  ausgleich: z.enum(['keine', 'gutschein']).default('keine'),
+  grund: z.string().trim().max(200).default(''),
+  payment: z.enum(['bar', 'karte']).optional(),
+  givenCents: z.number().int().min(0).max(10_000_00).nullable().optional(),
+});
+
+/** Umsetzen bzw. ermäßigt → Vollpreis an der Kassa, Aufpreis mit Kassabeleg */
+export async function umsetzenKassaAction(input: z.input<typeof UmsetzenKassa>): Promise<{ ok?: boolean; meldung?: string; fehler?: string; daten?: Record<string, unknown> }> {
+  try {
+    const u = await assertRole('kassa');
+    const d = UmsetzenKassa.parse(input);
+    const r = await ticketAendern({ ticketId: d.ticketId, seatId: d.seatId, art: d.art, ausgleich: d.ausgleich, grund: d.grund, kassa: { registerId: d.registerId, sessionId: d.sessionId, payment: d.payment ?? 'bar', givenCents: d.givenCents } }, u);
+    revalidatePath('/kassa/gaeste');
+    return { ok: true, meldung: `Gespeichert: ${r.platz}.${r.beleg ? ` Beleg Nr. ${r.beleg.number} über ${formatEur(r.beleg.totalCents)}.` : ''}${r.voucher ? ` Gutschein ${r.voucher.code} über ${formatEur(r.voucher.valueCents)}.` : ''}`, daten: { beleg: r.beleg?.id ?? '' } };
+  } catch (e) {
+    if (e instanceof PlatzBelegt) return { fehler: `Der Platz ist inzwischen vergeben: ${e.seats.map(sitzName).join(', ')}. Bitte einen anderen wählen.` };
+    return { fehler: meldung(e) };
+  }
 }

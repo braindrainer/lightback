@@ -3,7 +3,7 @@ import { requireRole } from '@/lib/auth';
 import { fmtDatum, fmtTag, fmtZeit } from '@/lib/dates';
 import { formatEur } from '@/lib/money';
 import { KAPAZITAET } from '@/lib/saal';
-import { ART_NAME, KANAL_NAME, KASSA_NAME, statistik, tagPlus, WOCHENTAGE, zeitraumAus } from '@/lib/statistik';
+import { ART_NAME, KANAL_NAME, KASSA_NAME, statistik, tagPlus, vorOrtStatistik, WOCHENTAGE, zeitraumAus } from '@/lib/statistik';
 import { Balken } from '@/components/system/Balken';
 import { Empty, PageHeader } from '@/components/ui';
 
@@ -37,7 +37,7 @@ export default async function Statistik({ searchParams }: { searchParams: Promis
   await requireRole('leitung', 'buchhaltung');
   const sp = await searchParams;
   const z = zeitraumAus(sp);
-  const s = await statistik(z);
+  const [s, vo] = await Promise.all([statistik(z), vorOrtStatistik(z)]);
   const k = s.kpi;
 
   // Ab drei Monaten Säulen je Monat statt je Tag
@@ -133,7 +133,7 @@ export default async function Statistik({ searchParams }: { searchParams: Promis
 
         <Abschnitt id="heat" titel="Ø Auslastung nach Wochentag und Beginn">
           {s.heatmap.zeiten.length ? (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Auslastung nach Wochentag und Beginnzeit, seitlich scrollbar">
               <table className="text-sm">
                 <caption className="sr-only">Durchschnittliche Auslastung in Prozent je Wochentag und Beginnzeit, in Klammern die Zahl der Vorstellungen</caption>
                 <thead><tr><td /><>{s.heatmap.zeiten.map((t) => <th key={t} scope="col" className="px-2 pb-1 text-xs font-semibold text-muted">{t}</th>)}</></tr></thead>
@@ -168,6 +168,29 @@ export default async function Statistik({ searchParams }: { searchParams: Promis
           </table>
         ) : <Empty>Keine Vorstellungen im Zeitraum.</Empty>}
       </Abschnitt>
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <Abschnitt id="freikarten" titel="Freikarten nach Grund">
+          {vo.frei.length ? (
+            <table className="table">
+              <thead><tr><th scope="col">Grund</th><th scope="col" className="text-right">Gäste</th><th scope="col" className="text-right">Karten</th><th scope="col" className="text-right">Eingelassen</th></tr></thead>
+              <tbody>{vo.frei.map((r) => <tr key={r.grund}><td>{r.grund}</td><td className="num text-right">{r.gaeste}</td><td className="num text-right font-semibold">{r.karten}</td><td className="num text-right">{r.ein}</td></tr>)}</tbody>
+              <tfoot><tr><td className="font-semibold">Summe</td><td className="num text-right">{vo.frei.reduce((n, r) => n + r.gaeste, 0)}</td><td className="num text-right font-semibold">{vo.frei.reduce((n, r) => n + r.karten, 0)}</td><td className="num text-right">{vo.frei.reduce((n, r) => n + r.ein, 0)}</td></tr></tfoot>
+            </table>
+          ) : <Empty>Keine Freikarten für Vorstellungen im Zeitraum.</Empty>}
+        </Abschnitt>
+        <Abschnitt id="noshow" titel="No-Show je gespielter Vorstellung">
+          {vo.noShow.length ? (
+            <div className="max-h-96 overflow-y-auto" tabIndex={0} role="region" aria-label="No-Show je Vorstellung, scrollbar">
+              <table className="table">
+                <thead><tr><th scope="col">Vorstellung</th><th scope="col" className="text-right">Tickets</th><th scope="col" className="text-right">Eingelassen</th><th scope="col" className="text-right">Nicht erschienen</th></tr></thead>
+                <tbody>{vo.noShow.map((r) => (
+                  <tr key={r.id}><td><Link href={`/vorstellungen/${r.id}`} className="underline-offset-4 hover:underline">{fmtTag(r.startsAt)}, {fmtZeit(r.startsAt)}</Link>{r.frei ? <span className="block text-xs text-muted">davon {r.frei} Freikarten</span> : null}</td><td className="num text-right">{r.verkauft}</td><td className="num text-right">{r.ein}</td><td className="num text-right font-semibold">{r.noShow} <span className="text-xs font-normal text-muted">({Math.round((r.noShow / r.verkauft) * 100)} %)</span></td></tr>
+                ))}</tbody>
+              </table>
+            </div>
+          ) : <Empty>Keine gespielten Vorstellungen im Zeitraum.</Empty>}
+        </Abschnitt>
+      </div>
       <p className="mt-3 text-xs text-muted">Zeitraum {z.tage} {z.tage === 1 ? 'Tag' : 'Tage'} · bis {fmtDatum(`${tagPlus(z.bis, 0)}T12:00:00Z`)} einschließlich.</p>
     </>
   );

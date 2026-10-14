@@ -119,7 +119,27 @@ export async function statistik(z: Zeitraum) {
   };
 }
 
-export const KANAL_NAME: Record<string, string> = { web: 'Webshop', telefon: 'Telefon', abendkasse: 'Abendkasse', partner: 'Partner' };
+/** Freikarten je Grund (Gästeliste) und No-Show je gespielter Vorstellung – nach Vorstellungstag */
+export async function vorOrtStatistik(z: Zeitraum) {
+  const [frei, shows] = await Promise.all([
+    db.$queryRaw<{ grund: string; karten: number; gaeste: number; ein: number }[]>(Prisma.sql`
+      SELECT COALESCE(o.meta->'gast'->>'grund', 'ohne Gästeliste') AS grund, COUNT(t.id)::int AS karten, COUNT(DISTINCT o.id)::int AS gaeste,
+        COUNT(t.id) FILTER (WHERE t.status = 'eingelassen')::int AS ein
+      FROM "Ticket" t JOIN "Order" o ON o.id = t."orderId" JOIN "Show" s ON s.id = t."showId"
+      WHERE t.art = 'frei' AND t.status <> 'storniert' AND s."startsAt" >= ${z.fromUtc} AND s."startsAt" < ${z.toUtc}
+      GROUP BY 1 ORDER BY 2 DESC`),
+    db.$queryRaw<{ id: string; startsAt: Date; verkauft: number; ein: number; frei: number }[]>(Prisma.sql`
+      SELECT s.id, s."startsAt", COUNT(t.id) FILTER (WHERE t.status <> 'storniert')::int AS verkauft,
+        COUNT(t.id) FILTER (WHERE t.status = 'eingelassen')::int AS ein,
+        COUNT(t.id) FILTER (WHERE t.status <> 'storniert' AND t.art = 'frei')::int AS frei
+      FROM "Show" s LEFT JOIN "Ticket" t ON t."showId" = s.id
+      WHERE s."startsAt" >= ${z.fromUtc} AND s."startsAt" < ${z.toUtc} AND s."startsAt" < now() AND s.status <> 'abgesagt'
+      GROUP BY s.id ORDER BY s."startsAt" DESC LIMIT 60`),
+  ]);
+  return { frei, noShow: shows.filter((x) => x.verkauft > 0).map((x) => ({ ...x, noShow: x.verkauft - x.ein })) };
+}
+
+export const KANAL_NAME: Record<string, string> = { web: 'Webshop', telefon: 'Telefon', abendkasse: 'Abendkasse', partner: 'Partner', gast: 'Gästeliste' };
 export const ART_NAME: Record<string, string> = { normal: 'Vollpreis', ermaessigt: 'Ermäßigt', rollstuhl: 'Rollstuhlplatz', frei: 'Freikarte' };
 export const KASSA_NAME: Record<string, string> = { merch: 'Merchandise', getraenk: 'Getränke', snack: 'Snacks', ticket: 'Tickets', sonstiges: 'Sonstiges' };
 export const WOCHENTAGE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];

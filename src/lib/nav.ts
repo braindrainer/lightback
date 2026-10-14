@@ -16,6 +16,7 @@ export const NAV: { titel: string; items: NavItem[] }[] = [
   { titel: 'Vor Ort', items: [
     { href: '/kassa', label: 'Kassa', rollen: ['kassa'], icon: 'M4 7h16v13H4zM8 7V4h8v3M8 12h8M8 16h5' },
     { href: '/einlass', label: 'Einlass-Scanner', rollen: ['einlass'], icon: 'M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M7 12h10' },
+    { href: '/hilfe/vorstellung', label: 'Hilfe: Vorstellung', rollen: [], icon: 'M12 21a9 9 0 110-18 9 9 0 010 18zM9.5 9a2.5 2.5 0 114 2c-.9.6-1.5 1.1-1.5 2.5M12 17h.01' },
   ] },
   { titel: 'Finanzen', items: [
     { href: '/rechnungen', label: 'Rechnungen', rollen: ['buchhaltung'], icon: 'M7 3h10v18l-3-2-2 2-2-2-3 2zM9 8h6M9 12h6' },

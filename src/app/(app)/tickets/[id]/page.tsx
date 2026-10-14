@@ -4,7 +4,9 @@ import { hat, requireRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { fmtDatum, fmtDatumZeit, fmtZeit } from '@/lib/dates';
 import { stornoMoeglich } from '@/lib/orders';
-import { sitzName, TICKET_UST } from '@/lib/saal';
+import { sitzName, TICKET_UST, type Preise } from '@/lib/saal';
+import { platzStatus } from '@/lib/seats';
+import Umsetzen from '@/components/vorort/Umsetzen';
 import { qrInhalt, qrSvg } from '@/lib/tickets';
 import MiniSaalplan from '@/components/MiniSaalplan';
 import { Money, PageHeader, StatusPill } from '@/components/ui';
@@ -13,13 +15,13 @@ import { AktionKnopf, StornoDialog } from '@/components/verkauf/BestellungAktion
 import { AktionForm, Absenden } from '@/components/verkauf/form';
 import { ART_NAME, KANAL_NAME, KAT_NAME } from '@/components/verkauf/texte';
 import { stornoAktion } from '../../bestellungen/actions';
-import { einlassZuruecknehmenAktion, ticketSenden } from '../actions';
+import { einlassZuruecknehmenAktion, ticketSenden, umsetzenAktion } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
 const ERGEBNIS: Record<string, string> = {
   ok: 'Eingelassen', doppelt: 'Abgelehnt: schon eingelassen', falsche_vorstellung: 'Abgelehnt: falsche Vorstellung', storniert: 'Abgelehnt: storniert',
-  unbekannt: 'Abgelehnt: unbekannt', ungueltig: 'Abgelehnt: ungültig', zurueckgenommen: 'Zurückgenommen',
+  unbekannt: 'Abgelehnt: unbekannt', ungueltig: 'Abgelehnt: ungültig', zurueckgenommen: 'Zurückgenommen', verweigert: 'Einlass verweigert',
 };
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -41,6 +43,8 @@ export default async function Ticket({ params }: { params: Promise<{ id: string 
   const leitung = hat(u, 'leitung');
   const ticketZeile = { id: t.id, label: `${sitzName(t.seatId)} (${KAT_NAME[t.kat]}, ${ART_NAME[t.art] ?? t.art})`, cents: t.priceCents };
   const fristAbgelaufen = !stornoMoeglich(t.show.startsAt);
+  const umsetzbar = t.status !== 'storniert' && ['bezahlt', 'teilstorniert'].includes(o.status) && t.show.status !== 'abgesagt' && Date.now() < t.show.startsAt.getTime() + t.show.durationMin * 60e3;
+  const saal = umsetzbar ? await platzStatus(t.showId) : null;
 
   return (
     <>
@@ -94,7 +98,7 @@ export default async function Ticket({ params }: { params: Promise<{ id: string 
             <tbody>{scans.map((s) => (
               <tr key={s.id}>
                 <td className="whitespace-nowrap">{fmtDatumZeit(s.createdAt)}</td>
-                <td>{ERGEBNIS[s.result] ?? s.result}{s.showId && s.showId !== t.showId && <span className="block text-xs text-muted">bei anderer Vorstellung</span>}</td>
+                <td>{ERGEBNIS[s.result] ?? s.result}{s.method === 'manuell' && <span className="block text-xs text-muted">ohne Scan (Namenssuche)</span>}{s.method === 'umbuchung' && <span className="block text-xs text-muted">nach Umbuchung am Einlass</span>}{s.reason && <span className="block text-xs">Grund: {s.reason}</span>}{s.showId && s.showId !== t.showId && <span className="block text-xs text-muted">bei anderer Vorstellung</span>}</td>
                 <td>{s.userId ? benutzer.get(s.userId) ?? s.userId : '–'}</td>
                 <td className="font-mono text-xs">{s.deviceId ?? '–'}</td>
                 <td>{s.offline ? 'offline, nachgereicht' : 'online'}</td>
@@ -111,6 +115,14 @@ export default async function Ticket({ params }: { params: Promise<{ id: string 
           </div>
         )}
       </section>
+
+      {saal && (
+        <section className="card mb-6 p-5" aria-labelledby="h-umsetzen">
+          <h2 id="h-umsetzen" className="h2 mb-1">Umsetzen oder Tarif ändern</h2>
+          <p className="mb-3 text-sm text-muted">Für Gäste vor Ort, z. B. Sichtbehinderung, Gruppe zusammensetzen oder ermäßigt ohne Nachweis. Ein Aufpreis wird an der Kassa kassiert (Kassa → Gäste &amp; Tickets).</p>
+          <Umsetzen ticket={{ id: t.id, seatId: t.seatId, kat: t.kat, art: t.art, code: t.code }} status={saal} preise={t.show.prices as Preise} modus="backend" darfKulanz={leitung} action={umsetzenAktion.bind(null, t.id)} />
+        </section>
+      )}
 
       <Verlauf ziele={[{ entity: 'ticket', ids: [t.id] }, { entity: 'order', ids: [o.id] }]} titel="Verlauf (Ticket und Bestellung)" />
     </>

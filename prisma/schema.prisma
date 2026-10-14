@@ -71,6 +71,9 @@ model Settings {
   // Buchhaltung
   fiscalYearStart  Int     @default(1) // Monat
   lockedUntil      DateTime? // Buchungen bis inkl. diesem Tag festgeschrieben
+  // Vorstellungen: unbezahlte Reservierungen (Telefon, Rechnung, Zahlungslink) verfallen so viele Minuten vor Beginn
+  reservierungVerfallMin  Int     @default(60)
+  reservierungVerfallMail Boolean @default(false)
   updatedAt        DateTime @updatedAt
 }
 
@@ -125,6 +128,9 @@ model Show {
   prices      Json
   notes       String      @default("")
   cancelReason String?
+  freikartenLimit Int? // Kontingent für Freikarten (Gästeliste), leer = ohne Grenze
+  abgebrochenAt DateTime? // Vorstellung während des Spiels abgebrochen (Technik, Notfall)
+  abbruchGrund  String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
   locks       SeatLock[]
@@ -189,7 +195,7 @@ model Customer {
   @@index([email])
 }
 
-/// channel: web | telefon | abendkasse | partner
+/// channel: web | telefon | abendkasse | partner | gast (Freikarten der Gästeliste)
 /// status: offen | bezahlt | storniert | teilstorniert
 model Order {
   id            String    @id @default(cuid())
@@ -214,6 +220,7 @@ model Order {
   manageToken   String    @unique @default(cuid()) // Link „Buchung verwalten“ für Kund:innen
   rebookedFromId String?
   holdId        String? // Reservierung, aus der die Tickets entstehen
+  meta          Json? // Zusatzdaten, z. B. { gast: { grund, notiz, mail, hinterlegt, begleitung, abgeholtAm, abgeholtVon } }
   createdAt     DateTime  @default(now())
   paidAt        DateTime?
   cancelledAt   DateTime?
@@ -290,7 +297,8 @@ model Ticket {
   @@index([showId, status])
 }
 
-/// result: ok | doppelt | falsche_vorstellung | storniert | unbekannt | ungueltig
+/// result: ok | doppelt | falsche_vorstellung | storniert | unbekannt | ungueltig | zurueckgenommen | verweigert
+/// method: scan (Standard) | manuell (Namenssuche) | umbuchung
 model CheckIn {
   id        String   @id @default(cuid())
   ticketId  String?
@@ -302,6 +310,8 @@ model CheckIn {
   deviceId  String?
   createdAt DateTime @default(now())
   offline   Boolean  @default(false)
+  method    String? // leer = Scan
+  reason    String? // bei verweigert: Grund
 
   @@index([showId, createdAt])
 }
