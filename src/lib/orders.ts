@@ -9,7 +9,7 @@ import { fussText, fuellen, layout, senden, vorlage, type Anhang } from './mail'
 import { formatEur } from './money';
 import { erstatten } from './payments';
 import { preis, SITZ, sitzName, TICKET_UST, type Kat, type Preise } from './saal';
-import { zuSperren } from './seats';
+import { cacheVerwerfen, holdSichern, zuSperren } from './seats';
 import { neuerCode, qrInhalt, qrPng } from './tickets';
 
 type Tx = Prisma.TransactionClient;
@@ -19,7 +19,13 @@ export type KundeEingabe = { email: string; firstName: string; lastName: string;
 export const STORNO_FRIST_H = 24;
 export const stornoMoeglich = (startsAt: Date, jetzt = new Date()) => startsAt.getTime() - jetzt.getTime() >= STORNO_FRIST_H * 3600e3;
 
+// Nummernkreise (Bestellung, Rechnung) je Transaktion serialisieren, sonst kollidieren gleichzeitige Käufe
+const NUMMER_LOCK = 7_401_001;
+const nummernSperre = (tx: Tx) => tx.$executeRaw`SELECT pg_advisory_xact_lock(${NUMMER_LOCK}::bigint)`;
+const TX_OPT = { maxWait: 10_000, timeout: 20_000 };
+
 async function bestellnummer(tx: Tx) {
+  await nummernSperre(tx);
   const s = await tx.settings.findUniqueOrThrow({ where: { id: 1 } });
   const jahr = new Date().getFullYear();
   const prefix = `${s.orderPrefix}-${jahr}-`;
@@ -65,7 +71,7 @@ export async function bestellungAnlegen(p: { holdToken: string; kunde?: KundeEin
         partnerId: p.partnerId, partnerRef: p.partnerRef, createdById: p.createdById, voucherCode: voucherCents ? p.voucherCode!.trim().toUpperCase() : null, locale: p.locale ?? 'de', note: p.note ?? '', holdId: hold.id,
       },
     });
-  });
+  }, TX_OPT);
 }
 
 export async function gutscheinPruefen(code: string) {
@@ -79,6 +85,13 @@ export async function gutscheinPruefen(code: string) {
  * Rechnung, Buchungssatz. Idempotent (zweiter Aufruf tut nichts).
  */
 export async function bezahlt(orderId: string, z: { provider: string; providerRef: string; amountCents: number; feeCents?: number; raw?: unknown; commissionCents?: number }) {
+  // Zahlung kam nach Ablauf der Reservierung: dieselben Plätze erneut sperren, wenn sie noch frei sind.
+  // Sind sie inzwischen vergeben, bleibt die Bestellung offen und das Geld geht automatisch zurück.
+  const vor = await db.order.findUnique({ where: { id: orderId }, select: { status: true, holdId: true } });
+  if (vor?.status === 'offen' && vor.holdId && !(await holdSichern(vor.holdId))) {
+    await zahlungOhnePlaetze(orderId, z);
+    return null;
+  }
   const fertig = await db.$transaction(async (tx) => {
     const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { show: true } });
     if (o.status !== 'offen') return null;
@@ -97,14 +110,40 @@ export async function bezahlt(orderId: string, z: { provider: string; providerRe
       if (!red) throw new Error('Gutschein nicht mehr gültig');
     }
     const zahl = o.totalCents - o.voucherCents;
-    if (zahl > 0) await tx.payment.create({ data: { orderId: o.id, provider: z.provider, status: 'bezahlt', amountCents: zahl, feeCents: z.feeCents ?? 0, providerRef: z.providerRef, raw: (z.raw ?? undefined) as object | undefined, paidAt: jetzt } });
+    if (zahl > 0) {
+      // Beim Start angelegte offene Zahlung (hobex/Stripe/PayPal) abschließen statt doppelt anzulegen
+      const daten = { provider: z.provider, status: 'bezahlt', amountCents: zahl, feeCents: z.feeCents ?? 0, providerRef: z.providerRef, raw: (z.raw ?? undefined) as object | undefined, paidAt: jetzt };
+      const offen = await tx.payment.findFirst({ where: { orderId: o.id, status: 'offen' }, orderBy: { createdAt: 'desc' } });
+      if (offen) await tx.payment.update({ where: { id: offen.id }, data: daten });
+      else await tx.payment.create({ data: { orderId: o.id, ...daten } });
+    }
     const neu = await tx.order.update({ where: { id: o.id }, data: { status: 'bezahlt', paidAt: jetzt, paidCents: zahl, holdId: null } });
     await rechnungFuerBestellung(tx, neu.id);
     await bucheTicketverkauf(tx, { id: o.id, number: o.number, paidAt: jetzt, totalCents: o.totalCents, voucherCents: o.voucherCents, provider: z.provider, partner: !!o.partnerId, feeCommissionCents: z.commissionCents });
     return neu;
-  });
-  if (fertig) await ticketMail(orderId).catch(() => {});
+  }, TX_OPT);
+  if (fertig) {
+    cacheVerwerfen(fertig.showId);
+    await ticketMail(orderId).catch(() => {});
+  }
   return fertig;
+}
+
+/** Plätze nach Ablauf der Reservierung vergeben: Zahlung erstatten, Kund:in informieren, protokollieren */
+async function zahlungOhnePlaetze(orderId: string, z: { provider: string; providerRef: string; amountCents: number; raw?: unknown }) {
+  const o = await db.order.findUniqueOrThrow({ where: { id: orderId }, include: { customer: true } });
+  const automatisch = z.amountCents > 0 && !['bar', 'rechnung', 'partner', 'gutschein'].includes(z.provider);
+  const r = automatisch ? await erstatten(z.provider, z.providerRef, z.amountCents) : { ok: false, ref: '', fehler: 'keine automatische Erstattung' };
+  const daten = { provider: z.provider, status: r.ok ? 'erstattet' : 'bezahlt', amountCents: z.amountCents, refundedCents: r.ok ? z.amountCents : 0, providerRef: z.providerRef, raw: { anbieter: (z.raw ?? null) as object, erstattung: r }, paidAt: new Date() };
+  const offen = await db.payment.findFirst({ where: { orderId, status: 'offen' } });
+  if (offen) await db.payment.update({ where: { id: offen.id }, data: daten });
+  else if (z.amountCents > 0) await db.payment.create({ data: { orderId, ...daten } });
+  await db.order.update({ where: { id: orderId }, data: { holdId: null, refundedCents: r.ok ? z.amountCents : 0, note: r.ok ? `Plätze nach Ablauf der Reservierung vergeben – ${formatEur(z.amountCents)} automatisch erstattet` : `Plätze nach Ablauf der Reservierung vergeben – Zahlung ${formatEur(z.amountCents)} bitte manuell erstatten (${r.fehler ?? ''})` } });
+  await db.auditLog.create({ data: { action: r.ok ? 'zahlung_erstattet_plaetze_weg' : 'zahlung_ohne_plaetze', entity: 'order', entityId: orderId, data: { provider: z.provider, providerRef: z.providerRef, amountCents: z.amountCents, erstattung: r } } });
+  if (o.customer?.email) {
+    const text = fuellen(`<h1 style="font-size:24px;margin:0 0 12px">Ihre Plätze waren leider nicht mehr frei</h1><p>Guten Tag {{vorname}} {{nachname}},</p><p>Ihre Zahlung für die Buchung {{nummer}} kam erst nach Ablauf der Reservierung bei uns an, und die Plätze waren inzwischen vergeben. ${r.ok ? `Wir haben ${formatEur(z.amountCents)} auf Ihr Zahlungsmittel zurückgebucht.` : 'Wir erstatten Ihnen den Betrag umgehend.'}</p><p>Bitte buchen Sie gerne erneut oder antworten Sie auf diese E-Mail.</p>`, { vorname: o.customer.firstName, nachname: o.customer.lastName, nummer: o.number });
+    await senden({ to: o.customer.email, subject: `Buchung ${o.number}: Plätze nicht mehr verfügbar`, html: layout('Plätze nicht mehr verfügbar', text, await fussText()), template: 'zahlung_erstattet', orderId }).catch(() => {});
+  }
 }
 
 async function gutscheinAbbuchen(tx: Tx, orderId: string, betrag: number) {
@@ -119,6 +158,7 @@ async function gutscheinAbbuchen(tx: Tx, orderId: string, betrag: number) {
 export async function rechnungFuerBestellung(tx: Tx, orderId: string) {
   const o = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { tickets: true, customer: true, show: true, invoices: true } });
   if (o.invoices.some((i) => i.kind === 'rechnung')) return null;
+  await nummernSperre(tx);
   const s = await tx.settings.findUniqueOrThrow({ where: { id: 1 } });
   const datum = new Date();
   const vorhandene = (await tx.invoice.findMany({ where: { number: { startsWith: renderNumber(s.invoiceNumberFmt.split('{N')[0], s.invoicePrefix, datum, 0) } }, select: { number: true } })).map((i) => i.number);
@@ -210,7 +250,8 @@ export async function stornieren(p: { orderId: string; ticketIds?: string[]; met
     if (alsGutschein > 0) await bucheStorno(tx, { id: `${refund.id}-g`, date: new Date(), orderNumber: o.number, bruttoCents: alsGutschein, feeCents: 0, method: 'gutschein', provider: '' });
     await stornoRechnung(tx, o.id, ziel.map((t) => t.id));
     return { refund, voucherId };
-  });
+  }, TX_OPT);
+  cacheVerwerfen(o.showId);
   if (p.mail !== false && o.customer?.email) {
     const v = erg.voucherId ? await db.voucher.findUnique({ where: { id: erg.voucherId } }) : null;
     const erstattung = [
@@ -231,6 +272,7 @@ async function stornoRechnung(tx: Tx, orderId: string, ticketIds: string[]) {
   const tickets = await tx.ticket.findMany({ where: { id: { in: ticketIds } } });
   const brutto = tickets.reduce((s, t) => s + t.priceCents, 0);
   const z = zerlegen(new Map([[TICKET_UST, brutto]]))[0] ?? { netto: 0, ust: 0 };
+  await nummernSperre(tx);
   const s = await tx.settings.findUniqueOrThrow({ where: { id: 1 } });
   const d = new Date();
   const vorhandene = (await tx.invoice.findMany({ where: { number: { startsWith: renderNumber(s.invoiceNumberFmt.split('{N')[0], s.invoicePrefix, d, 0) } }, select: { number: true } })).map((i) => i.number);
@@ -259,6 +301,8 @@ export async function vorstellungAbsagen(showId: string, grund: string, methode:
       ergebnis.fehler.push(`${o.id}: ${(e as Error).message}`);
     }
   }
+  // Vertriebspartner per Webhook informieren (läuft im Hintergrund, Fehler nur im Log)
+  import('./partner').then((m) => m.absageMelden(showId, grund)).catch((e) => console.error('Partner-Webhook', e));
   return ergebnis;
 }
 

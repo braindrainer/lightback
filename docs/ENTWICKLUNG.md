@@ -33,3 +33,12 @@ Prisma 6 + PostgreSQL 18, Tailwind v4. Live: https://lightback.skillful.at (Dock
 
 ## Prüfen
 - `npx tsc --noEmit`, `npx next build`.
+
+## Schnittstellen (Shop, Partner, Zahlung, Cron)
+- Shop-API `src/app/api/public/v1/…` (CORS nur für `PUBLIC_ORIGIN`), Partner-API `src/app/api/partner/v1/…` (Bearer `loc_live_…`),
+  Doku öffentlich unter `/api-doku`, OpenAPI unter `/api/partner/v1/openapi.json`. Logik in `src/lib/shop.ts`, `partner.ts`, `schnittstelle.ts`.
+- Zahlungsrückkehr: `/api/zahlung/hobex/return`, `/api/zahlung/paypal/return`, Stripe-Webhook `/api/zahlung/stripe/webhook`.
+- Umgebungsvariable `CRON_KEY` (mind. 16 Zeichen). Crontab auf dem Server:
+  `*/5 * * * * curl -fsS -X POST -H "X-Cron-Key: $CRON_KEY" https://lightback.skillful.at/api/cron >/dev/null`
+- nginx muss `X-Real-IP` selbst setzen (`proxy_set_header X-Real-IP $remote_addr;`), sonst greifen die Limits je IP nicht.
+- Lasttest: `npx tsx scripts/lasttest.ts <basisUrl> <showId> [anzahl]` (nur gegen Testvorstellungen).
