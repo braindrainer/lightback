@@ -135,7 +135,7 @@ export function zerlegen(bruttoJeSatz: Map<number, number>) {
 // ─────────── Automatikbuchungen ───────────
 
 /** Ticketverkauf bezahlt: Geldtransit/Forderung an Anzahlungen + USt 13 % (Gutscheinanteil aus 3490) */
-export async function bucheTicketverkauf(tx: Tx, o: { id: string; number: string; paidAt: Date; totalCents: number; voucherCents: number; provider: string; partner?: boolean; feeCommissionCents?: number }) {
+export async function bucheTicketverkauf(tx: Tx, o: { id: string; number: string; paidAt: Date; totalCents: number; voucherCents: number; provider: string; partner?: boolean; feeCommissionCents?: number; voucherKonto?: string }) {
   const z = zerlegen(new Map([[13, o.totalCents]]))[0];
   if (!z) return null;
   const zahlung = o.totalCents - o.voucherCents;
@@ -145,7 +145,7 @@ export async function bucheTicketverkauf(tx: Tx, o: { id: string; number: string
     zeilen: [
       { konto: TRANSIT[o.partner ? 'partner' : o.provider] ?? '2880', soll: zahlung - provision },
       { konto: '7660', soll: provision, text: 'Provision Vertriebspartner' },
-      { konto: '3490', soll: o.voucherCents, text: 'Gutschein eingelöst' },
+      { konto: o.voucherKonto ?? '3490', soll: o.voucherCents, text: 'Gutschein eingelöst' },
       { konto: '3480', haben: z.netto, vatCode: 'U13', base: z.netto },
       { konto: '3502', haben: z.ust },
     ],

@@ -1,4 +1,5 @@
 import Nav from '@/components/Nav';
+import ScrollBereiche from '@/components/ScrollBereiche';
 import { hat, requireRole } from '@/lib/auth';
 import { NAV } from '@/lib/nav';
 import { ROLLEN_NAME } from '@/lib/session';
@@ -15,6 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {s.demoMode && <p className="mb-4 rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-900">Demo-Modus: Zahlungen sind simuliert, E-Mails werden nicht verschickt (siehe Einstellungen).</p>}
         {children}
       </main>
+      <ScrollBereiche />
     </div>
   );
 }

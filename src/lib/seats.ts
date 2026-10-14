@@ -231,12 +231,14 @@ export async function holdSichern(holdId: string): Promise<boolean> {
 
 /** Sitze sperren (Presse, Technik, Kontingent) */
 export async function sperren(showId: string, seatIds: string[], reason: string) {
+  // Rollstuhlplatz gesperrt → auch die Zusatzsitze seines Stellplatzes (sonst wirken sie frei, sind aber nicht verkaufbar)
+  seatIds = zuSperren(seatIds);
   await abgelaufeneLoesen(showId, seatIds);
   await db.seatLock.createMany({ data: seatIds.map((seatId) => ({ showId, seatId, kind: 'block', reason })), skipDuplicates: true });
   cacheVerwerfen(showId);
 }
 export async function entsperren(showId: string, seatIds: string[]) {
-  await db.seatLock.deleteMany({ where: { showId, seatId: { in: seatIds }, kind: 'block' } });
+  await db.seatLock.deleteMany({ where: { showId, seatId: { in: zuSperren(seatIds) }, kind: 'block' } });
   cacheVerwerfen(showId);
 }
 

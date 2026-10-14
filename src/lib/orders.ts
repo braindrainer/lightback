@@ -119,7 +119,7 @@ export async function bezahlt(orderId: string, z: { provider: string; providerRe
     }
     const neu = await tx.order.update({ where: { id: o.id }, data: { status: 'bezahlt', paidAt: jetzt, paidCents: zahl, holdId: null } });
     await rechnungFuerBestellung(tx, neu.id);
-    await bucheTicketverkauf(tx, { id: o.id, number: o.number, paidAt: jetzt, totalCents: o.totalCents, voucherCents: o.voucherCents, provider: z.provider, partner: !!o.partnerId, feeCommissionCents: z.commissionCents });
+    await bucheTicketverkauf(tx, { id: o.id, number: o.number, paidAt: jetzt, totalCents: o.totalCents, voucherCents: o.voucherCents, provider: z.provider, partner: !!o.partnerId, feeCommissionCents: z.commissionCents, voucherKonto: await gutscheinKonto(tx, o.voucherCode) });
     return neu;
   }, TX_OPT);
   if (fertig) {
@@ -145,6 +145,22 @@ async function zahlungOhnePlaetze(orderId: string, z: { provider: string; provid
     const text = fuellen(`<h1 style="font-size:24px;margin:0 0 12px">Ihre Plätze waren leider nicht mehr frei</h1><p>Guten Tag {{vorname}} {{nachname}},</p><p>Ihre Zahlung für die Buchung {{nummer}} kam erst nach Ablauf der Reservierung bei uns an, und die Plätze waren inzwischen vergeben. ${r.ok ? `Wir haben ${formatEur(z.amountCents)} auf Ihr Zahlungsmittel zurückgebucht.` : 'Wir erstatten Ihnen den Betrag umgehend.'}</p><p>Bitte buchen Sie gerne erneut oder antworten Sie auf diese E-Mail.</p>`, { vorname: o.customer.firstName, nachname: o.customer.lastName, nummer: o.number });
     await senden({ to: o.customer.email, subject: `Buchung ${o.number}: Plätze nicht mehr verfügbar`, html: layout('Plätze nicht mehr verfügbar', text, await fussText()), template: 'zahlung_erstattet', orderId }).catch(() => {});
   }
+}
+
+/**
+ * Gegenkonto für eingelöste Gutscheine:
+ * verkaufte oder aus Storno entstandene Gutscheine → 3490 (Verbindlichkeit wurde gebucht),
+ * Partner-Gutscheine (Tiqets …) → 2010 (Partner schuldet uns den Betrag),
+ * verschenkte eigene Gutscheine → 7650 Werbung (keine Verbindlichkeit gebucht) – mit Steuerberatung abstimmen.
+ */
+async function gutscheinKonto(tx: Tx, code: string | null) {
+  if (!code) return '3490';
+  const v = await tx.voucher.findUnique({ where: { code } });
+  if (!v) return '3490';
+  if (v.kind === 'partner') return '2010';
+  if (v.issuer === 'storno') return '3490';
+  const verkauft = await tx.journalEntry.findFirst({ where: { source: 'voucher', sourceId: v.id }, select: { id: true } });
+  return verkauft ? '3490' : '7650';
 }
 
 async function gutscheinAbbuchen(tx: Tx, orderId: string, betrag: number) {
