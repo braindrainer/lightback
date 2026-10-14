@@ -1,6 +1,6 @@
 // Service Worker der Kassa: nur die App-Hülle cachen. Verkäufe brauchen eine Verbindung, weil Belege am Server
 // signiert werden (RKSV) – offline zeigt die Kassa einen Hinweis und sperrt den Verkauf.
-const CACHE = 'loc-kassa-v1';
+const CACHE = 'loc-kassa-v2';
 const HUELLE = ['/kassa', '/manifest-kassa.webmanifest', '/icons/vorort-192.png', '/icons/vorort-512.png', '/icons/vorort.svg'];
 
 const brauchbar = (r) => r && r.ok && !r.redirected && r.type === 'basic';

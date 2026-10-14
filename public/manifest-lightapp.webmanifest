@@ -1,0 +1,20 @@
+{
+  "name": "LoC Einlass",
+  "short_name": "Einlass",
+  "description": "Einlass-Scanner für Light of Creation",
+  "lang": "de-AT",
+  "id": "/einlass",
+  "start_url": "/einlass",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070b14",
+  "theme_color": "#070b14",
+  "icons": [
+    { "src": "/icons/vorort.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icons/vorort-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/vorort-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/vorort-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/vorort-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

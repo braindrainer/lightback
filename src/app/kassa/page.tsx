@@ -3,7 +3,7 @@ import { hat, requireRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { fmtDatumZeit, fmtTag, fmtZeit, wienTag, wienZuUtc } from '@/lib/dates';
 import { formatEur } from '@/lib/money';
-import type { Preise } from '@/lib/saal';
+import { TICKET_UST, type Preise } from '@/lib/saal';
 import { auslastung } from '@/lib/seats';
 import { kasseSetzenAction, schichtOeffnenAction } from './actions';
 import { kasseWaehlen } from './daten';
@@ -58,21 +58,29 @@ export default async function KassaSeite({ searchParams }: { searchParams: Promi
 
   const jetzt = new Date();
   const tagEnde = new Date(wienZuUtc(wienTag(jetzt), '00:00').getTime() + 864e5);
-  const [produkte, shows] = await Promise.all([
+  const [produkte, shows, belege] = await Promise.all([
     db.product.findMany({ where: { active: true }, orderBy: [{ sort: 'asc' }, { name: 'asc' }] }),
     db.show.findMany({ where: { status: 'verkauf', startsAt: { gt: new Date(jetzt.getTime() - 30 * 60e3), lt: new Date(Math.max(tagEnde.getTime(), jetzt.getTime() + 6 * 3600e3)) } }, orderBy: { startsAt: 'asc' }, take: 4 }),
+    db.receipt.findMany({ where: { registerId: reg.id, type: { in: ['standard', 'training', 'storno'] } }, orderBy: { number: 'desc' }, take: 5 }),
   ]);
   const showDaten = await Promise.all(shows.map(async (s) => {
     const a = await auslastung(s.id);
-    return { id: s.id, label: `${fmtTag(s.startsAt)}, ${fmtZeit(s.startsAt)} Uhr`, prices: s.prices as Preise, frei: { I: a.jeKat.I.frei, II: a.jeKat.II.frei, R: a.jeKat.R.frei } };
+    const kap = (k: 'I' | 'II' | 'R') => Object.values(a.jeKat[k]).reduce((x, y) => x + y, 0);
+    return {
+      id: s.id, label: `${fmtTag(s.startsAt)}, ${fmtZeit(s.startsAt)} Uhr`, tag: fmtTag(s.startsAt), zeit: fmtZeit(s.startsAt), prices: s.prices as Preise,
+      frei: { I: a.jeKat.I.frei, II: a.jeKat.II.frei, R: a.jeKat.R.frei }, kap: { I: kap('I'), II: kap('II'), R: kap('R') },
+    };
   }));
   return (
     <KassaApp
       kasse={{ id: reg.id, name: reg.name, kassenId: reg.kassenId, signer: reg.signer }}
-      schicht={{ id: schicht.id, seit: fmtDatumZeit(schicht.openedAt), von: schicht.openedByName, wechselgeld: formatEur(schicht.floatCents) }}
+      kassen={kassen.map((k) => ({ id: k.id, name: k.name, kassenId: k.kassenId }))}
+      schicht={{ id: schicht.id, seit: fmtZeit(schicht.openedAt), seitLang: fmtDatumZeit(schicht.openedAt), von: schicht.openedByName, wechselgeld: formatEur(schicht.floatCents) }}
       produkte={produkte.map((p) => ({ id: p.id, name: p.name, category: p.category, priceCents: p.priceCents, vatRate: p.vatRate, color: p.color, sku: p.sku, stock: p.stock }))}
       shows={showDaten}
-      kopf={kopf}
+      ticketUst={TICKET_UST}
+      belege={belege.map((b) => ({ id: b.id, number: b.number, zeit: fmtZeit(b.createdAt), totalCents: b.totalCents, payment: b.payment, type: b.type }))}
+      fehler={fehler}
     />
   );
 }
