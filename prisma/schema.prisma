@@ -1,0 +1,571 @@
+// Lightback – Backend für Light of Creation (Parnassus Immersive GmbH)
+// Geld immer in ganzen Cent (Int), Steuersätze in ganzen Prozent (Int).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Benutzer & Einstellungen ─────────────────────────
+
+/// Rollen: admin, leitung (Shows, Bestellungen, Statistik), buchhaltung, kassa, einlass
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique // Anmeldename
+  email        String    @unique
+  name         String
+  passwordHash String
+  roles        String[]
+  active       Boolean   @default(true)
+  pin          String? // bcrypt, für schnellen Kassa-/Einlass-Login am Gerät
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ip        String
+  ok        Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+}
+
+/// Genau eine Zeile (id = 1)
+model Settings {
+  id               Int     @id @default(1)
+  // Firma
+  companyName      String  @default("Parnassus Immersive GmbH")
+  street           String  @default("Günthergasse 3 Top 5a")
+  zip              String  @default("1090")
+  city             String  @default("Wien")
+  country          String  @default("Österreich")
+  fn               String  @default("FN 615829 g")
+  court            String  @default("Handelsgericht Wien")
+  uid              String  @default("ATU 80078309")
+  managingDirector String  @default("Stefan Treske")
+  email            String  @default("office@light-of-creation.com")
+  phone            String  @default("+43 1 376 3399")
+  iban             String  @default("")
+  bic              String  @default("")
+  // Rechnungen
+  invoicePrefix    String  @default("RE")
+  invoiceNumberFmt String  @default("{PREFIX}{YYYY}-{NNNNN}")
+  orderPrefix      String  @default("LOC")
+  // Mail
+  smtpHost         String  @default("")
+  smtpPort         Int     @default(587)
+  smtpUser         String  @default("")
+  smtpPassEnc      String  @default("")
+  mailFrom         String  @default("Light of Creation <office@light-of-creation.com>")
+  mailBcc          String  @default("")
+  // Zahlungsanbieter: { hobex: {...}, paypal: {...} } – Geheimnisse verschlüsselt
+  paymentConfig    Json    @default("{}")
+  demoMode         Boolean @default(true)
+  // Buchhaltung
+  fiscalYearStart  Int     @default(1) // Monat
+  lockedUntil      DateTime? // Buchungen bis inkl. diesem Tag festgeschrieben
+  updatedAt        DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  userName  String?
+  action    String
+  entity    String
+  entityId  String?
+  data      Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// ───────────────────────── Vorstellungen & Plätze ─────────────────────────
+
+/// Regel, aus der Vorstellungen erzeugt werden (z. B. täglich 18:30 und 20:00, Di spielfrei)
+model ShowSeries {
+  id        String   @id @default(cuid())
+  name      String
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  weekdays  Int[] // 0 = Sonntag … 6 = Samstag
+  times     String[] // "18:30"
+  durationMin Int    @default(30)
+  prices    Json // { I: {normal, ermaessigt}, II: {...}, R: {normal} } in Cent
+  createdAt DateTime @default(now())
+  shows     Show[]
+}
+
+/// status: geplant | verkauf | pausiert | abgesagt
+model Show {
+  id          String      @id @default(cuid())
+  seriesId    String?
+  series      ShowSeries? @relation(fields: [seriesId], references: [id])
+  title       String      @default("Light of Creation")
+  startsAt    DateTime
+  durationMin Int         @default(30)
+  status      String      @default("verkauf")
+  prices      Json
+  notes       String      @default("")
+  cancelReason String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  locks       SeatLock[]
+  tickets     Ticket[]
+  orders      Order[]
+
+  @@index([startsAt])
+}
+
+/// Belegung eines Sitzes: Reservierung im Warenkorb, verkauftes Ticket oder Sperre.
+/// Der eindeutige Schlüssel (showId, seatId) verhindert Doppelverkauf auch bei gleichzeitigen Käufen.
+/// kind: hold | ticket | block
+model SeatLock {
+  id        String    @id @default(cuid())
+  showId    String
+  show      Show      @relation(fields: [showId], references: [id], onDelete: Cascade)
+  seatId    String
+  kind      String
+  holdId    String?
+  hold      Hold?     @relation(fields: [holdId], references: [id], onDelete: Cascade)
+  ticketId  String?
+  reason    String? // bei Sperren: Presse, Technik, Kontingent …
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([showId, seatId])
+  @@index([holdId])
+  @@index([ticketId])
+}
+
+/// Warenkorb-Reservierung (15 Min., verlängerbar)
+model Hold {
+  id         String     @id @default(cuid())
+  token      String     @unique // geheimes Token des Browsers
+  showId     String
+  seats      Json // [{ seatId, art }]
+  expiresAt  DateTime
+  extensions Int        @default(0)
+  createdAt  DateTime   @default(now())
+  locks      SeatLock[]
+}
+
+// ───────────────────────── Kunden, Bestellungen, Tickets ─────────────────────────
+
+model Customer {
+  id         String   @id @default(cuid())
+  email      String
+  firstName  String
+  lastName   String
+  phone      String?
+  company    String?
+  vatId      String?
+  street     String?
+  zip        String?
+  city       String?
+  country    String?
+  newsletter Boolean  @default(false)
+  locale     String   @default("de")
+  createdAt  DateTime @default(now())
+  orders     Order[]
+
+  @@index([email])
+}
+
+/// channel: web | telefon | abendkasse | partner
+/// status: offen | bezahlt | storniert | teilstorniert
+model Order {
+  id            String    @id @default(cuid())
+  number        String    @unique
+  channel       String    @default("web")
+  status        String    @default("offen")
+  showId        String
+  show          Show      @relation(fields: [showId], references: [id])
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  totalCents    Int // Summe der Tickets (brutto)
+  voucherCents  Int       @default(0) // mit Gutschein bezahlt
+  voucherCode   String?
+  paidCents     Int       @default(0)
+  refundedCents Int       @default(0)
+  locale        String    @default("de")
+  note          String    @default("")
+  createdById   String? // Mitarbeiter:in bei Telefon/Abendkasse
+  partnerId     String?
+  partner       Partner?  @relation(fields: [partnerId], references: [id])
+  partnerRef    String? // Buchungsnummer beim Partner
+  manageToken   String    @unique @default(cuid()) // Link „Buchung verwalten“ für Kund:innen
+  rebookedFromId String?
+  holdId        String? // Reservierung, aus der die Tickets entstehen
+  createdAt     DateTime  @default(now())
+  paidAt        DateTime?
+  cancelledAt   DateTime?
+  tickets       Ticket[]
+  payments      Payment[]
+  invoices      Invoice[]
+  emails        EmailLog[]
+  redemptions   VoucherRedemption[]
+  refunds       Refund[]
+
+  @@index([createdAt])
+  @@index([showId])
+  @@unique([partnerId, partnerRef])
+}
+
+/// Storno/Erstattung. method: zahlungsmittel | gutschein | keine
+/// reason: kunde | kulanz | absage | umbuchung | partner | sonstiges
+model Refund {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id])
+  ticketIds   String[]
+  amountCents Int
+  feeCents    Int      @default(0) // einbehaltene Stornogebühr
+  method      String
+  reason      String
+  note        String   @default("")
+  paymentId   String? // Erstattung über diesen Zahlungsvorgang
+  voucherId   String? // bei Erstattung als Gutschein
+  status      String   @default("erledigt") // offen | erledigt | fehler
+  providerRef String?
+  createdById String?
+  createdAt   DateTime @default(now())
+}
+
+/// Wiederverkäufer (Tiqets, HelloTickets, Hotels …) mit API-Zugang
+model Partner {
+  id             String   @id @default(cuid())
+  name           String
+  contactEmail   String   @default("")
+  apiKeyHash     String   @unique // SHA-256 des API-Schlüssels
+  apiKeyPrefix   String // erste Zeichen zur Anzeige
+  commissionPct  Int      @default(0)
+  categories     String[] @default(["I", "II"]) // erlaubte Kategorien
+  quotaPerShow   Int? // max. Tickets je Vorstellung, leer = unbegrenzt
+  webhookUrl     String   @default("")
+  webhookSecret  String   @default("")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  lastUsedAt     DateTime?
+  orders         Order[]
+}
+
+/// art: normal | ermaessigt | rollstuhl | frei
+/// status: gueltig | eingelassen | storniert
+model Ticket {
+  id          String    @id @default(cuid())
+  orderId     String
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  showId      String
+  show        Show      @relation(fields: [showId], references: [id])
+  seatId      String
+  kat         String // I | II | R
+  art         String
+  priceCents  Int
+  vatRate     Int       @default(13)
+  code        String    @unique // kurzer Code, steht auch im QR
+  status      String    @default("gueltig")
+  checkedInAt DateTime?
+  checkedInBy String?
+  createdAt   DateTime  @default(now())
+  scans       CheckIn[]
+
+  @@index([showId, status])
+}
+
+/// result: ok | doppelt | falsche_vorstellung | storniert | unbekannt | ungueltig
+model CheckIn {
+  id        String   @id @default(cuid())
+  ticketId  String?
+  ticket    Ticket?  @relation(fields: [ticketId], references: [id])
+  showId    String?
+  code      String
+  result    String
+  userId    String?
+  deviceId  String?
+  createdAt DateTime @default(now())
+  offline   Boolean  @default(false)
+
+  @@index([showId, createdAt])
+}
+
+/// provider: hobex | stripe | paypal | applepay | gutschein | bar | terminal | rechnung | partner
+/// status: offen | autorisiert | bezahlt | fehlgeschlagen | erstattet | teilerstattet
+model Payment {
+  id           String    @id @default(cuid())
+  orderId      String?
+  order        Order?    @relation(fields: [orderId], references: [id])
+  receiptId    String?
+  provider     String
+  status       String    @default("offen")
+  amountCents  Int
+  feeCents     Int       @default(0)
+  refundedCents Int      @default(0)
+  providerRef  String?
+  raw          Json?
+  createdAt    DateTime  @default(now())
+  paidAt       DateTime?
+  settledAt    DateTime? // Auszahlung des Anbieters auf das Bankkonto
+  settlementRef String?
+
+  @@index([provider, createdAt])
+  @@index([orderId])
+}
+
+/// kind: wert (eigener Wertgutschein) | partner (Tiqets, HelloTickets …)
+model Voucher {
+  id             String    @id @default(cuid())
+  code           String    @unique
+  kind           String    @default("wert")
+  issuer         String    @default("eigen")
+  valueCents     Int
+  remainingCents Int
+  validUntil     DateTime?
+  note           String    @default("")
+  soldOrderId    String? // falls über den Shop verkauft
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  redemptions    VoucherRedemption[]
+}
+
+model VoucherRedemption {
+  id         String   @id @default(cuid())
+  voucherId  String
+  voucher    Voucher  @relation(fields: [voucherId], references: [id])
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  amountCents Int
+  createdAt  DateTime @default(now())
+}
+
+// ───────────────────────── Rechnungen ─────────────────────────
+
+/// kind: rechnung | storno ; status: offen | bezahlt | storniert
+model Invoice {
+  id          String    @id @default(cuid())
+  number      String    @unique
+  kind        String    @default("rechnung")
+  status      String    @default("bezahlt")
+  orderId     String?
+  order       Order?    @relation(fields: [orderId], references: [id])
+  recipient   Json // { name, company?, street?, zip?, city?, country?, vatId?, email? }
+  issueDate   DateTime  @default(now())
+  serviceDate DateTime?
+  dueDate     DateTime?
+  items       Json // [{ title, quantity, unitCents, vatRate }]
+  netCents    Int
+  vatCents    Int
+  grossCents  Int
+  cancelsId   String?
+  note        String    @default("")
+  pdfPath     String?
+  sentAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([issueDate])
+}
+
+// ───────────────────────── Kassa (RKSV) ─────────────────────────
+
+/// Registrierkasse nach RKSV. signer: demo | fiskaly
+model Register {
+  id           String   @id @default(cuid())
+  name         String
+  kassenId     String   @unique // Kassenidentifikationsnummer
+  signer       String   @default("demo")
+  signerConfig Json     @default("{}")
+  aesKeyEnc    String // AES-256-Schlüssel für den Umsatzzähler, verschlüsselt
+  certSerial   String   @default("DEMO")
+  turnoverEnc  String   @default("") // nicht verwendet – Zähler wird aus Belegen summiert
+  lastReceiptNo Int     @default(0)
+  lastSigHash  String   @default("") // Verkettung: Hash der letzten Signatur
+  active       Boolean  @default(true)
+  startedAt    DateTime? // Startbeleg erstellt
+  createdAt    DateTime @default(now())
+  receipts     Receipt[]
+  sessions     CashSession[]
+}
+
+model Product {
+  id        String   @id @default(cuid())
+  name      String
+  category  String   @default("merch") // merch | getraenk | snack | ticket | sonstiges
+  priceCents Int
+  vatRate   Int      @default(20)
+  sku       String?
+  stock     Int?
+  active    Boolean  @default(true)
+  sort      Int      @default(0)
+  color     String   @default("")
+  createdAt DateTime @default(now())
+}
+
+/// Beleg. type: standard | storno | training | null | start | monat | jahr | schluss
+model Receipt {
+  id          String    @id @default(cuid())
+  registerId  String
+  register    Register  @relation(fields: [registerId], references: [id])
+  number      Int // fortlaufende Belegnummer je Kasse
+  type        String    @default("standard")
+  createdAt   DateTime  @default(now())
+  cashierId   String?
+  cashierName String?
+  items       Json // [{ productId?, name, quantity, unitCents, vatRate, ticketIds? }]
+  // Beträge je RKSV-Satz in Cent (brutto)
+  sumNormal   Int       @default(0) // 20 %
+  sumReduced1 Int       @default(0) // 10 %
+  sumReduced2 Int       @default(0) // 13 %
+  sumZero     Int       @default(0) // 0 %
+  sumSpecial  Int       @default(0)
+  totalCents  Int
+  payment     String    @default("bar") // bar | karte | gemischt | gutschein
+  givenCents  Int?
+  changeCents Int?
+  turnoverEnc String // verschlüsselter Umsatzzähler (Base64)
+  prevSigHash String
+  signature   String // JWS (compact) bzw. "Sicherheitseinrichtung ausgefallen"
+  qr          String // maschinenlesbarer Code nach RKSV
+  signerFailed Boolean  @default(false)
+  cancelsId   String?
+  orderId     String? // Abendkassa-Tickets
+  sessionId   String?
+  session     CashSession? @relation(fields: [sessionId], references: [id])
+
+  @@unique([registerId, number])
+  @@index([createdAt])
+}
+
+/// Kassenschicht mit Anfangs- und Endbestand
+model CashSession {
+  id           String    @id @default(cuid())
+  registerId   String
+  register     Register  @relation(fields: [registerId], references: [id])
+  openedById   String
+  openedByName String
+  openedAt     DateTime  @default(now())
+  floatCents   Int       @default(0) // Wechselgeld zu Beginn
+  closedAt     DateTime?
+  closedByName String?
+  countedCents Int?
+  expectedCents Int?
+  note         String    @default("")
+  receipts     Receipt[]
+}
+
+// ───────────────────────── Buchhaltung (doppelte Buchführung, GmbH) ─────────────────────────
+
+/// Konto nach Einheitskontenrahmen (EKR). type: aktiv | passiv | aufwand | ertrag
+model Account {
+  id        String   @id @default(cuid())
+  number    String   @unique
+  name      String
+  type      String
+  vatCode   String? // Standard-Steuercode beim Buchen auf dieses Konto
+  active    Boolean  @default(true)
+  system    Boolean  @default(false) // von Automatikbuchungen verwendet, nicht löschbar
+  createdAt DateTime @default(now())
+  lines     JournalLine[]
+}
+
+/// Buchungssatz. source: auto-Quelle (order | refund | receipt | settlement | expense | invoice | manual | eroeffnung)
+model JournalEntry {
+  id          String   @id @default(cuid())
+  number      Int      @unique @default(autoincrement())
+  date        DateTime @db.Date
+  text        String
+  docRef      String   @default("") // Belegnummer
+  source      String   @default("manual")
+  sourceId    String?
+  createdById String?
+  reversesId  String?  @unique
+  createdAt   DateTime @default(now())
+  lines       JournalLine[]
+
+  @@index([date])
+  @@index([source, sourceId])
+}
+
+/// Eine Seite eines Buchungssatzes. Genau eines von debit/credit ist > 0.
+/// vatCode: z. B. U20, U13, U10 (Umsatzsteuer), V20, V13, V10 (Vorsteuer) – bestimmt die UVA-Kennzahl
+model JournalLine {
+  id          String       @id @default(cuid())
+  entryId     String
+  entry       JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     Account      @relation(fields: [accountId], references: [id])
+  debitCents  Int          @default(0)
+  creditCents Int          @default(0)
+  vatCode     String?
+  baseCents   Int? // Bemessungsgrundlage für die UVA
+  text        String?
+
+  @@index([accountId])
+}
+
+/// Eingangsbeleg (Lieferantenrechnung) mit Datei
+model Expense {
+  id           String   @id @default(cuid())
+  supplier     String
+  docNumber    String   @default("")
+  docDate      DateTime @db.Date
+  dueDate      DateTime? @db.Date
+  netCents     Int
+  vatCents     Int
+  grossCents   Int
+  vatRate      Int      @default(20)
+  accountNumber String // Aufwandskonto
+  status       String   @default("offen") // offen | bezahlt
+  paidAt       DateTime?
+  filePath     String?
+  fileName     String?
+  note         String   @default("")
+  createdAt    DateTime @default(now())
+}
+
+model BankTransaction {
+  id           String   @id @default(cuid())
+  externalId   String   @unique
+  bookingDate  DateTime @db.Date
+  amountCents  Int
+  counterparty String   @default("")
+  iban         String   @default("")
+  reference    String   @default("")
+  status       String   @default("neu") // neu | gebucht | ignoriert
+  entryId      String?
+  createdAt    DateTime @default(now())
+}
+
+// ───────────────────────── E-Mails & Geräte ─────────────────────────
+
+/// status: wartet | gesendet | fehler | demo (nicht gesendet, weil kein SMTP)
+model EmailLog {
+  id        String   @id @default(cuid())
+  to        String
+  subject   String
+  template  String
+  status    String   @default("wartet")
+  error     String?
+  orderId   String?
+  order     Order?   @relation(fields: [orderId], references: [id])
+  html      String   @default("")
+  createdAt DateTime @default(now())
+  sentAt    DateTime?
+
+  @@index([createdAt])
+}
+
+model EmailTemplate {
+  key       String   @id // buchung | storno | erinnerung | rechnung
+  locale    String   @default("de")
+  subject   String
+  body      String // Markdown-artiger Text mit {{platzhaltern}}
+  updatedAt DateTime @updatedAt
+}

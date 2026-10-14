@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* Backend im Auftritt von Light of Creation: hell und ruhig für lange Arbeitstage, Nachtblau + Gold als Akzent */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --color-ink: #121a2b;
+  --color-muted: #59617a;
+  --color-line: #e3dccd;
+  --color-paper: #f7f4ee;
+  --color-card: #ffffff;
+  --color-nacht: #070b14;
+  --color-accent: #8a6a1f;
+  --color-accent-deep: #6e5118;
+  --color-accent-soft: #f6ecd4;
+  --color-gold: #d9b877;
+  --color-pos: #1d7a47;
+  --color-neg: #b3261e;
+  --color-warn: #8a5800;
+  --color-kat1: #b08530;
+  --color-kat2: #8676e6;
+  --color-rs: #2f7fc4;
+}
+
+html, body { background: var(--color-paper); color: var(--color-ink); }
+.num { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-50 cursor-pointer min-h-10;
+}
+@utility btn-sm { @apply px-2.5 py-1 text-xs min-h-8; }
+
+@layer components {
+  .card { @apply bg-card border border-line rounded-xl; }
+  .btn-primary { @apply btn bg-nacht text-white hover:bg-[#1a2540]; }
+  .btn-gold { @apply btn bg-gold text-nacht hover:bg-[#ecd3a0]; }
+  .btn-secondary { @apply btn bg-white border border-line text-ink hover:bg-paper; }
+  .btn-danger { @apply btn bg-white border border-line text-neg hover:bg-red-50; }
+  .input { @apply w-full max-w-full rounded-lg border border-[#a8a08f] bg-white px-3 py-2 text-base sm:text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20; }
+  .label { @apply block text-xs font-semibold text-muted mb-1; }
+  .table { @apply w-full text-sm; }
+  .table th { @apply text-left text-[11px] font-semibold uppercase tracking-wider text-muted px-3 sm:px-4 py-2.5 border-b border-line whitespace-nowrap bg-[#fbf9f5]; }
+  .table td { @apply px-3 sm:px-4 py-2.5 border-b border-line/70 align-top; }
+  .table tr:hover td { @apply bg-paper/60; }
+  .pill { @apply inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap; }
+  .h1 { @apply text-xl sm:text-2xl font-semibold tracking-tight; }
+  .h2 { @apply text-base font-semibold; }
+}
+
+@media (max-width: 767px) {
+  .card { overflow-x: auto; }
+  .card table.table { min-width: 600px; }
+}
+
+.tabbar { display: flex; gap: .25rem; box-shadow: inset 0 -1px 0 var(--color-line); overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+.tabbar::-webkit-scrollbar { display: none; }
