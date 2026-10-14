@@ -106,6 +106,14 @@ export const STANDARD_VORLAGEN: Record<string, { subject: string; body: string }
 <p>Ihre Reservierung {{bestellnummer}} für die Vorstellung am {{datum}} um {{uhrzeit}} Uhr war bis {{frist}} Uhr nicht bezahlt. Die Plätze haben wir deshalb freigegeben.</p>
 <p>Restkarten gibt es an der Abendkasse, solange Plätze frei sind.</p>`,
   },
+  gutschein: {
+    subject: 'Ihr Gutschein für Light of Creation',
+    body: `<h1 style="font-size:24px;margin:0 0 12px">Ihr Gutschein für Light of Creation</h1>
+<p>{{anrede}}</p>
+<p>hier ist Ihr Gutschein über <strong>{{wert}}</strong>. Sie können ihn im Webshop, telefonisch oder an der Abendkasse einlösen – auch in mehreren Teilen.</p>
+{{gutschein_html}}
+<p>Geben Sie bei der Buchung einfach den Code <strong>{{code}}</strong> an. Gültig bis {{gueltig_bis}}.</p>`,
+  },
   erinnerung: {
     subject: 'Morgen bei Light of Creation',
     body: `<h1 style="font-size:24px;margin:0 0 12px">Bis morgen, {{vorname}}!</h1>

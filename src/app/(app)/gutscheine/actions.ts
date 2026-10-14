@@ -8,6 +8,7 @@ import { wienZuUtc } from '@/lib/dates';
 import { formatEur, parseAmountToCents } from '@/lib/money';
 import { gutscheinVerkaufen } from '@/lib/orders';
 import { neuerCode } from '@/lib/tickets';
+import { gutscheinMail } from '@/lib/gutschein';
 import { ausfuehren, type Ergebnis } from '@/components/verkauf/ergebnis';
 
 const obj = (fd: FormData) => Object.fromEntries(fd.entries());
@@ -86,5 +87,17 @@ export async function gutscheinAktivSetzen(id: string, aktiv: boolean, _: Ergebn
     revalidatePath(`/gutscheine/${id}`);
     revalidatePath('/gutscheine');
     return { ok: true, meldung: aktiv ? 'Gutschein ist wieder aktiv.' : 'Gutschein deaktiviert.' };
+  });
+}
+
+/** Gutschein als Karte per E-Mail schicken */
+export async function gutscheinSendenAktion(id: string, _: Ergebnis, fd: FormData): Promise<Ergebnis> {
+  return ausfuehren(async () => {
+    const u = await assertRole(...ROLLEN);
+    const d = z.object({ an: z.email('Bitte eine gültige E-Mail-Adresse angeben'), name: z.string().trim().max(120).default('') }).parse({ an: String(fd.get('an') ?? '').trim(), name: fd.get('name') ?? '' });
+    const r = await gutscheinMail(id, d.an, d.name, u);
+    revalidatePath(`/gutscheine/${id}`);
+    if (!r.ok) throw new Error(`Versand fehlgeschlagen: ${'fehler' in r ? r.fehler : ''}`);
+    return { ok: true, meldung: 'demo' in r && r.demo ? 'Im Demo-Modus nicht verschickt – die Mail steht im E-Mail-Protokoll.' : `Gutschein an ${d.an} gesendet.` };
   });
 }

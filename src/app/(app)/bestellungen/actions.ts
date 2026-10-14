@@ -12,6 +12,7 @@ import { sitzName, SITZ } from '@/lib/saal';
 import { freigeben, haltenBis, MAX_TICKETS, PlatzBelegt, reservieren } from '@/lib/seats';
 import { umbuchen } from '@/lib/umbuchung';
 import { ausfuehren, type Ergebnis } from '@/components/verkauf/ergebnis';
+import { ART_NAME, KAT_NAME } from '@/components/verkauf/texte';
 
 const obj = (fd: FormData) => Object.fromEntries(fd.entries());
 const opt = z.string().trim().max(200).optional().transform((v) => v || undefined);
@@ -258,3 +259,20 @@ export async function rechnungErstellenAktion(orderId: string, _: Ergebnis): Pro
     return { ok: true, meldung: `Rechnung ${inv.number} erstellt.` };
   });
 }
+
+// ───────── Schnellaktionen in der Liste ─────────
+
+/** Daten für Bearbeiten/Stornieren aus der Liste (nur lesen) */
+export async function bestellungKurz(orderId: string) {
+  const u = await assertRole('leitung');
+  const o = await db.order.findUniqueOrThrow({ where: { id: orderId }, include: { customer: true, show: { select: { startsAt: true } }, tickets: { where: { status: 'gueltig' }, orderBy: { seatId: 'asc' } } } });
+  const c = o.customer;
+  return {
+    id: o.id, number: o.number, status: o.status, note: o.note,
+    kunde: { firstName: c?.firstName ?? '', lastName: c?.lastName ?? '', email: c?.email ?? '', phone: c?.phone ?? '', company: c?.company ?? '', vatId: c?.vatId ?? '', street: c?.street ?? '', zip: c?.zip ?? '', city: c?.city ?? '', country: c?.country ?? '', newsletter: c?.newsletter ?? false },
+    tickets: o.tickets.map((t) => ({ id: t.id, label: `${sitzName(t.seatId)} (${KAT_NAME[t.kat]}, ${ART_NAME[t.art] ?? t.art})`, cents: t.priceCents })),
+    fristAbgelaufen: !stornoMoeglich(o.show.startsAt),
+    darfFrist: hat(u, 'leitung'),
+  };
+}
+export type BestellungKurz = Awaited<ReturnType<typeof bestellungKurz>>;

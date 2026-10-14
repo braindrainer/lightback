@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import type { Ergebnis } from './ergebnis';
 import { Absenden, AktionForm } from './form';
+import { Icon } from '@/components/icons';
+import { Modal, toast } from '@/components/ui-client';
 
 type Aktion = (p: Ergebnis, fd: FormData) => Promise<Ergebnis>;
 
@@ -64,5 +66,23 @@ export function ImportFormular({ action }: { action: Aktion }) {
       </div>
       <div><Absenden>Codes importieren</Absenden></div>
     </AktionForm>
+  );
+}
+
+/** „Per E-Mail senden“: kleiner Dialog mit Empfänger */
+export function GutscheinSenden({ action, code, deaktiviert }: { action: Aktion; code: string; deaktiviert?: boolean }) {
+  const [offen, setOffen] = useState(false);
+  return (
+    <>
+      <button type="button" className="btn-secondary" onClick={() => setOffen(true)} aria-haspopup="dialog" disabled={deaktiviert}><Icon name="mail" className="h-4 w-4" />Per E-Mail senden</button>
+      <Modal offen={offen} onClose={() => setOffen(false)} titel="Gutschein per E-Mail senden">
+        <p className="text-sm text-muted">Die Empfänger:in bekommt den Gutschein <span className="font-mono text-ink">{code}</span> als Karte mit QR-Code (Vorlage „Gutschein per E-Mail“).</p>
+        <AktionForm action={action} onErfolg={(e) => { toast(e.meldung ?? 'Gesendet'); setOffen(false); }}>
+          <div><label htmlFor="gs-an" className="label">E-Mail-Adresse</label><input id="gs-an" name="an" type="email" required autoComplete="off" className="input" /></div>
+          <div><label htmlFor="gs-name" className="label">Name für die Anrede (optional)</label><input id="gs-name" name="name" autoComplete="off" className="input" placeholder="z. B. Frau Muster" /></div>
+          <div className="flex justify-end gap-2"><button type="button" className="btn-secondary" onClick={() => setOffen(false)}>Abbrechen</button><Absenden>Senden</Absenden></div>
+        </AktionForm>
+      </Modal>
+    </>
   );
 }

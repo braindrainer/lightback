@@ -12,7 +12,7 @@ export default async function TicketBlock({ orderId }: { orderId: string }) {
   const mobil = `/t/${o.manageToken}`;
   const pdf = `/bestellungen/${o.id}/tickets`;
   return (
-    <section className="card mb-6" aria-labelledby="h-ticketdokumente">
+    <section className="card" aria-labelledby="h-ticketdokumente">
       <style dangerouslySetInnerHTML={{ __html: `${ticketCss('web')}.tb-vorschau .lt{font-size:7.5px;width:28em;border:1px solid #2a3654}.tb-vorschau .lt-hinweise{display:none}.tb-vorschau a,.tb-vorschau a>div{height:100%}.tb-vorschau .lt{height:100%}` }} />
       <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4">
         <h2 id="h-ticketdokumente" className="h2">Tickets für die Kund:in</h2>
