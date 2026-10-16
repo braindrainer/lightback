@@ -3,6 +3,7 @@ import { audit } from '@/lib/audit';
 import { assertRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { depExport } from '@/lib/rksv';
+import { modulAn } from '@/lib/module';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   let u;
   try { u = await assertRole('admin'); } catch { return NextResponse.json({ fehler: 'Keine Berechtigung' }, { status: 403 }); }
+  if (!(await modulAn('kassa'))) return NextResponse.json({ fehler: 'Kassa ist ausgeschaltet' }, { status: 403 });
   const q = new URL(req.url).searchParams;
   const reg = await db.register.findUnique({ where: { id: q.get('registerId') ?? '' } });
   if (!reg) return NextResponse.json({ fehler: 'Kasse nicht gefunden' }, { status: 404 });

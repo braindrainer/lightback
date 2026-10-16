@@ -2,7 +2,8 @@ import { requireRole } from '@/lib/auth';
 import { getSettings } from '@/lib/db';
 import { Formular } from '@/components/system/Formular';
 import { PageHeader } from '@/components/ui';
-import { demoSpeichern, firmaSpeichern, mailSpeichern, rechnungenSpeichern, vorstellungenSpeichern, zahlungSpeichern } from './actions';
+import { MODUL_KEYS, MODULE, modulStand } from '@/lib/module';
+import { demoSpeichern, firmaSpeichern, moduleSpeichern, mailSpeichern, rechnungenSpeichern, vorstellungenSpeichern, zahlungSpeichern } from './actions';
 import { MailTest } from './MailTest';
 
 export const dynamic = 'force-dynamic';
@@ -54,12 +55,13 @@ function Url({ label, url, hinweis }: { label: string; url: string; hinweis?: st
   );
 }
 
-const ABSCHNITTE = [['firma', 'Firma'], ['rechnungen', 'Rechnungen'], ['vorstellungen', 'Vorstellungen'], ['email', 'E-Mail'], ['zahlung', 'Zahlungsanbieter'], ['demo', 'Demo-Modus']] as const;
+const ABSCHNITTE = [['funktionen', 'Funktionen'], ['firma', 'Firma'], ['rechnungen', 'Rechnungen'], ['vorstellungen', 'Vorstellungen'], ['email', 'E-Mail'], ['zahlung', 'Zahlungsanbieter'], ['demo', 'Demo-Modus']] as const;
 
 export default async function Einstellungen() {
   await requireRole('admin');
   const s = await getSettings();
   const k = (s.paymentConfig ?? {}) as Konfig;
+  const m = modulStand(s.module);
   const app = (process.env.APP_ORIGIN ?? 'https://lightback.skillful.at').replace(/\/$/, '');
   return (
     <>
@@ -68,6 +70,21 @@ export default async function Einstellungen() {
         {ABSCHNITTE.map(([id, l]) => <a key={id} href={`#${id}`} className="btn-secondary btn-sm">{l}</a>)}
       </nav>
       <div className="grid max-w-4xl gap-6">
+        <Formular action={moduleSpeichern} knopf="Funktionen speichern" className="card p-5">
+          <h2 id="funktionen" className="h2 scroll-mt-6">Funktionen</h2>
+          <p className="mt-1 mb-4 text-sm text-muted">Was dieser Veranstalter nutzt. Ausgeschaltete Bereiche verschwinden aus Menü und Shop, ihre Schnittstellen antworten mit 403. Daten bleiben erhalten.</p>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {MODUL_KEYS.map((key) => (
+              <li key={key}>
+                <label className="flex h-full gap-3 rounded-lg border border-line p-3">
+                  <input type="checkbox" name={`modul_${key}`} defaultChecked={m[key]} className="mt-0.5 h-5 w-5 shrink-0 accent-[#6e5118]" aria-describedby={`modul-${key}-h`} />
+                  <span><span className="font-semibold">{MODULE[key].name}</span><span id={`modul-${key}-h`} className="mt-0.5 block text-xs text-muted">{MODULE[key].text}</span></span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </Formular>
+
         <Formular action={firmaSpeichern} knopf="Firmendaten speichern" className="card p-5">
           <h2 id="firma" className="h2 mb-3 scroll-mt-6">Firma</h2>
           <div className="grid gap-4 sm:grid-cols-2">

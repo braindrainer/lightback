@@ -1,5 +1,6 @@
 // Regelmäßige Aufgaben (alle 5 Minuten über POST /api/cron):
 // Reservierungen aufräumen, Leistungsabgrenzung, Erinnerungsmails, unbezahlte Web-Bestellungen schließen.
+import { bmdTaeglich } from './finanzen/bmd-uebergabe';
 import { protokollMehrere } from './audit';
 import { db, getSettings } from './db';
 import { fmtDatum, fmtZeit } from './dates';
@@ -96,5 +97,6 @@ export async function cronLauf() {
   await schritt('reservierungenAufgeraeumt', async () => { const vor = await db.hold.count(); await aufraeumen(); return vor - (await db.hold.count()); });
   await schritt('vorstellungenAbgerechnet', () => vorstellungenAbrechnen());
   await schritt('erinnerungenGesendet', () => erinnerungenSenden());
+  await schritt('bmdLauf', () => bmdTaeglich());
   return { ...erg, dauerMs: Date.now() - t0 };
 }

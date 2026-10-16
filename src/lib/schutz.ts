@@ -5,7 +5,7 @@ import type { PrismaClient } from '@prisma/client';
 import { abschnittPruefen, eintragHash, GENESIS, KETTEN_LOCK, type KettenZeile } from './audit-kette';
 
 /** Tabellen, deren Zeilen nie gelöscht werden dürfen */
-export const NIE_LOESCHEN = ['JournalEntry', 'JournalLine', 'Receipt', 'Ticket', 'Invoice', 'Payment', 'Refund', 'Order', 'CheckIn', 'VoucherRedemption'];
+export const NIE_LOESCHEN = ['JournalEntry', 'JournalLine', 'Receipt', 'Ticket', 'Invoice', 'Payment', 'Refund', 'Order', 'CheckIn', 'VoucherRedemption', 'BmdLauf'];
 
 /** Spalten, die vor dem Prisma-Schemaabgleich angelegt sein müssen (db push verlangt sonst --accept-data-loss für seq) */
 const SPALTEN: [string, string][] = [['seq', 'SERIAL NOT NULL'], ['vorher', 'JSONB'], ['nachher', 'JSONB'], ['ip', 'TEXT'], ['userAgent', 'TEXT'], ['prevHash', 'TEXT'], ['hash', 'TEXT']];

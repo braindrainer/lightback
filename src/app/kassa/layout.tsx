@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
 import { hat, requireRole } from '@/lib/auth';
+import { requireModul } from '@/lib/module';
 import { PwaRegistrieren } from '@/components/vorort/pwa';
 import KassaNav from './KassaNav';
 
@@ -14,6 +15,7 @@ export const viewport: Viewport = { themeColor: '#070b14', width: 'device-width'
 
 export default async function KassaLayout({ children }: { children: React.ReactNode }) {
   const u = await requireRole('kassa');
+  await requireModul('kassa');
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-30 flex min-h-12 shrink-0 items-center gap-1 bg-nacht px-2 text-white print:hidden">

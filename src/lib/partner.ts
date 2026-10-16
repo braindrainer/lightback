@@ -1,4 +1,5 @@
 // Vertriebspartner-API: Anmeldung per API-Schlüssel, Kontingent, Bestellung auf Rechnung, Storno, Webhooks.
+import { assertModulApi } from './module';
 import { protokoll } from './audit';
 import { createHmac } from 'node:crypto';
 import { Prisma, type Partner } from '@prisma/client';
@@ -15,6 +16,7 @@ import { qrInhalt, qrSvg } from './tickets';
 export const PARTNER_LIMIT = 300; // Anfragen je Minute und Partner
 
 export async function partnerAusAnfrage(req: Request): Promise<Partner> {
+  await assertModulApi('partner');
   begrenzen(`partner-ip:${clientIp(req)}`, 600);
   const m = (req.headers.get('authorization') ?? '').match(/^Bearer\s+(\S+)$/i);
   if (!m || !KEY_RE.test(m[1])) throw new ApiFehler(401, 'nicht_angemeldet', 'API-Schlüssel fehlt oder hat ein falsches Format (Authorization: Bearer loc_live_…)');

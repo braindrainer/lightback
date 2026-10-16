@@ -6,6 +6,7 @@ import { hat, requireRole } from '@/lib/auth';
 import { NAV } from '@/lib/nav';
 import { ROLLEN_NAME } from '@/lib/session';
 import { db, getSettings } from '@/lib/db';
+import { modulStand } from '@/lib/module';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const u = await requireRole();
@@ -21,7 +22,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     '/emails': { n: mailFehler, text: 'Fehler' },
     '/buchhaltung': { n: belege, text: 'Belege fällig' },
   };
-  const gruppen = NAV.map((g) => ({ titel: g.titel, items: g.items.filter((i) => !i.rollen.length || hat(u, ...i.rollen)) })).filter((g) => g.items.length);
+  const m = modulStand(s.module);
+  const gruppen = NAV.map((g) => ({ titel: g.titel, items: g.items.filter((i) => (!i.rollen.length || hat(u, ...i.rollen)) && (!i.modul || m[i.modul])) })).filter((g) => g.items.length);
   return (
     <div className="lg:flex">
       <Nav gruppen={gruppen} badges={badges} suche={hat(u, 'leitung')} name={u.name} rollen={u.roles.map((r) => ROLLEN_NAME[r]).join(', ')} />

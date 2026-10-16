@@ -6,6 +6,7 @@ import { aenderung, audit, maskieren } from '@/lib/audit';
 import { assertRole } from '@/lib/auth';
 import { db, getSettings } from '@/lib/db';
 import { renderNumber } from '@/lib/invoice-calc';
+import { MODUL_KEYS, MODULE, modulStand, type ModulStand } from '@/lib/module';
 import { decrypt, encrypt } from '@/lib/secret';
 import type { Ergebnis } from '@/components/system/Formular';
 
@@ -141,4 +142,15 @@ export async function vorstellungenSpeichern(_p: Ergebnis, fd: FormData): Promis
     fertig();
     return { ok: `Gespeichert: unbezahlte Reservierungen verfallen ${d.reservierungVerfallMin} Minuten vor Beginn.` };
   } catch (e) { return { fehler: fehlerText(e) }; }
+}
+
+export async function moduleSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebnis> {
+  const ich = await assertRole('admin');
+  const alt = modulStand((await getSettings()).module);
+  const neu = Object.fromEntries(MODUL_KEYS.map((k) => [k, fd.get(`modul_${k}`) === 'on'])) as ModulStand;
+  await db.settings.update({ where: { id: 1 }, data: { module: neu } });
+  await audit(ich, 'einstellungen_module', 'settings', '1', undefined, aenderung(alt, neu));
+  fertig();
+  const aus = MODUL_KEYS.filter((k) => !neu[k]).map((k) => MODULE[k].name);
+  return { ok: aus.length ? `Gespeichert. Ausgeschaltet: ${aus.join(', ')}.` : 'Gespeichert. Alle Funktionen sind an.' };
 }

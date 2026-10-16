@@ -1,0 +1,6 @@
+# Lightback: tägliches Backup und monatlicher Restore-Test (nach /etc/cron.d/lightback-backup kopieren)
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+15 3 * * * root /opt/lightback/scripts/backup.sh >> /var/log/lightback-backup.log 2>&1
+30 4 1 * * root /opt/lightback/scripts/backup-pruefen.sh >> /var/log/lightback-backup.log 2>&1

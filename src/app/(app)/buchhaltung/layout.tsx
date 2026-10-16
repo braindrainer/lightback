@@ -1,5 +1,6 @@
 import { requireRole } from '@/lib/auth';
 import { getSettings } from '@/lib/db';
+import { requireModul } from '@/lib/module';
 import { HINWEIS_VORSCHLAG } from '@/lib/finanzen/texte';
 import { fmtBuchDatum } from '@/lib/finanzen/zeitraum';
 import { Meldungsbereich } from '@/components/finanzen/Formular';
@@ -20,6 +21,7 @@ const TABS = [
 
 export default async function BuchhaltungLayout({ children }: { children: React.ReactNode }) {
   await requireRole('buchhaltung');
+  await requireModul('buchhaltung');
   const s = await getSettings();
   return (
     <>

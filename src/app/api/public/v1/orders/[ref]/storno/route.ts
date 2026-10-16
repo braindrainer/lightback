@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { assertModulApi } from '@/lib/module';
 import { db } from '@/lib/db';
 import { stornieren } from '@/lib/orders';
 import { ApiFehler, json, koerper, preflight, shopRoute } from '@/lib/schnittstelle';
@@ -11,6 +12,7 @@ const schema = z.object({ ticketCodes: z.array(z.string().min(4).max(20)).max(10
 
 // POST /orders/{manageToken}/storno → Selbst-Storno bis 24 h vor Beginn (Erstattung oder Gutschein)
 export const POST = shopRoute<{ ref: string }>(async (req, { ref }) => {
+  await assertModulApi('selbstservice');
   const e = await koerper(req, schema);
   const o = await bestellungLaden({ manageToken: ref });
   if (!o) throw new ApiFehler(404, 'unbekannt', 'Buchung nicht gefunden');

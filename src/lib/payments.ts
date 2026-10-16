@@ -1,6 +1,7 @@
 // Zahlungsanbieter: hobex (Karte, Apple Pay über Open Payment Platform), Stripe, PayPal.
 // Im Demo-Modus (Einstellungen) oder ohne Zugangsdaten läuft alles über den Demo-Anbieter:
 // Testkarte 4111 1111 1111 1111 klappt, 4000 0000 0000 0002 wird abgelehnt.
+import { modulListe } from './module';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { getSettings } from './db';
 import { decrypt } from './secret';
@@ -31,11 +32,12 @@ async function konfig(): Promise<{ demo: boolean; k: Konfig }> {
 /** Welche Anbieter sind eingerichtet? (für Kasse und Einstellungen) */
 export async function verfuegbar() {
   const { demo, k } = await konfig();
+  const m = await modulListe();
   return {
     demo,
-    hobex: demo || !!(k.hobex?.entityId && k.hobex?.tokenEnc),
-    stripe: demo || !!k.stripe?.secretKeyEnc,
-    paypal: demo || !!(k.paypal?.clientId && k.paypal?.secretEnc),
+    hobex: m.hobex && (demo || !!(k.hobex?.entityId && k.hobex?.tokenEnc)),
+    stripe: m.stripe && (demo || !!k.stripe?.secretKeyEnc),
+    paypal: m.paypal && (demo || !!(k.paypal?.clientId && k.paypal?.secretEnc)),
   };
 }
 
@@ -132,6 +134,8 @@ export async function paypalCapture(orderId: string): Promise<Start> {
 /** Zahlung starten. ref = Bestellnummer, rueck = Rücksprung-URL (PayPal) */
 export async function zahlungStarten(anbieter: Anbieter, betrag: number, ref: string, opt: { rueck?: string; demoKarte?: string } = {}): Promise<Start> {
   const { demo, k } = await konfig();
+  const m = await modulListe();
+  if (!m[anbieter === 'applepay' ? 'hobex' : anbieter]) return { status: 'abgelehnt', providerRef: '', fehler: `${anbieter} ist ausgeschaltet` };
   if (demo) return demoStart(betrag, opt.demoKarte);
   if ((anbieter === 'hobex' || anbieter === 'applepay') && k.hobex?.entityId) return hobexCheckout(k.hobex, betrag, ref);
   if (anbieter === 'stripe' && k.stripe?.secretKeyEnc) return stripeStart(k.stripe, betrag, ref);

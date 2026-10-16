@@ -113,3 +113,25 @@ Buchhaltung:
   `*/5 * * * * curl -fsS -X POST -H "X-Cron-Key: $CRON_KEY" https://lightback.skillful.at/api/cron >/dev/null`
 - nginx muss `X-Real-IP` selbst setzen (`proxy_set_header X-Real-IP $remote_addr;`), sonst greifen die Limits je IP nicht.
 - Lasttest: `npx tsx scripts/lasttest.ts <basisUrl> <showId> [anzahl]` (nur gegen Testvorstellungen).
+
+## Funktionen ein/aus (`src/lib/module.ts`)
+- `Settings.module` (JSON, fehlender Schlüssel = an): selbstservice, kassa, partner, buchhaltung, bmd, stripe, paypal, hobex. Schalter unter Einstellungen → Funktionen.
+- Seiten: `requireModul(k)` (404), Server Actions: `assertModul(k)`, Schnittstellen: `assertModulApi(k)` (403). Menüpunkte tragen `modul` in `src/lib/nav.ts`.
+- Das Journal läuft immer mit, auch bei ausgeschalteter Buchhaltung – es ist die Quelle für BMD.
+
+## Buchung verwalten (Shop)
+- Shop-Seite `/{de|en}/buchung` (Nummer + E-Mail) und `/{de|en}/buchung/{manageToken}` im Repo `/opt/light`.
+- API: `POST /api/public/v1/orders/lookup` (`{ nummer, email }` → manageToken, Buchungs- oder Ticketnummer), `POST /orders/{token}/storno`,
+  `POST /orders/{token}/rebook` (`{ showId, ticketCodes? }`, gleiche Kategorie und Tarif, beste freie Plätze, nur ohne Aufpreis; Rest bleibt Gutschein).
+  Logik in `src/lib/selbstservice.ts`, Frist `STORNO_FRIST_H` (24 h laut AGB).
+
+## BMD-Übergabe (`src/lib/finanzen/bmd-uebergabe.ts`)
+- `BmdLauf` = eine Importdatei (Format wie `bmd.ts`). Jede Buchung steht in genau einem gültigen Lauf (bereit | abgeholt | uebernommen);
+  „fehler“ gibt die Buchungen für den nächsten Lauf frei. Läufe werden nie gelöscht (Schutz-Trigger).
+- Cron legt nach 2 Uhr einmal täglich einen Lauf bis zum Vortag an; manuell unter `/bmd`. Optional Kopie per Mail (`Settings.bmdMail`).
+- Konnektor-API mit `Authorization: Bearer loc_bmd_…` (nur Hash in `Settings.bmdKeyHash`): `GET /api/bmd/v1/laeufe`,
+  `GET /api/bmd/v1/laeufe/{nummer}/datei`, `POST /api/bmd/v1/laeufe/{nummer}/rueckmeldung` `{ ok, referenz?, fehler? }`.
+
+## Backup
+- `scripts/backup.sh` täglich 03:15 (pg_dump + `data/` nach `/var/backups/lightback`, 30 Tage), `scripts/backup-pruefen.sh` monatlicher
+  Restore-Test in eine Wegwerf-Datenbank. Cron: `scripts/lightback-backup.cron` → `/etc/cron.d/lightback-backup`.

@@ -74,6 +74,12 @@ model Settings {
   // Vorstellungen: unbezahlte Reservierungen (Telefon, Rechnung, Zahlungslink) verfallen so viele Minuten vor Beginn
   reservierungVerfallMin  Int     @default(60)
   reservierungVerfallMail Boolean @default(false)
+  // Funktionen ein/aus: { kassa: false, … } – fehlt ein Schlüssel, ist die Funktion an (src/lib/module.ts)
+  module           Json    @default("{}")
+  // BMD-Übergabe: Kopie jedes Laufs per Mail (leer = keine), Schlüssel des Konnektors (nur Hash)
+  bmdMail          String  @default("")
+  bmdKeyHash       String  @default("")
+  bmdKeyPrefix     String  @default("")
   updatedAt        DateTime @updatedAt
 }
 
@@ -527,6 +533,31 @@ model JournalLine {
   text        String?
 
   @@index([accountId])
+}
+
+/// Übergabe an BMD NTCS: ein Lauf = eine Importdatei. Jede Buchung steht in genau einem gültigen Lauf
+/// (status bereit | abgeholt | uebernommen); bei „fehler“ gehen die Buchungen in den nächsten Lauf.
+model BmdLauf {
+  id             String    @id @default(cuid())
+  nummer         Int       @unique @default(autoincrement())
+  bis            DateTime  @db.Date
+  entryIds       String[]
+  anzahl         Int
+  zeilen         Int
+  sollCents      Int
+  datei          String // CSV wie der BMD-Export (UTF-8, ausgeliefert als ISO-8859-1)
+  sha256         String
+  status         String    @default("bereit")
+  quelle         String    @default("automatisch") // automatisch | manuell
+  bmdReferenz    String?
+  fehler         String?
+  abgeholtAt     DateTime?
+  abgeholtVon    String?
+  rueckmeldungAt DateTime?
+  createdById    String?
+  createdAt      DateTime  @default(now())
+
+  @@index([status])
 }
 
 /// Eingangsbeleg (Lieferantenrechnung) mit Datei

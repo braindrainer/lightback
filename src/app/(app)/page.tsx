@@ -3,6 +3,7 @@ import { hat, requireRole } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { fmtDatumZeit, fmtTag, fmtZeit, TZ, wienTag, wienZuUtc } from '@/lib/dates';
 import { formatEur } from '@/lib/money';
+import { modulListe } from '@/lib/module';
 import { KAPAZITAET } from '@/lib/saal';
 import { KANAL_NAME, tagPlus, tagesreihe, zeitraumAus } from '@/lib/statistik';
 import { Balken } from '@/components/system/Balken';
@@ -42,7 +43,8 @@ export default async function Uebersicht() {
   const z30 = zeitraumAus({ von: tagPlus(heute, -29), bis: heute });
   const in14 = wienZuUtc(tagPlus(heute, 14), '00:00');
   const verkauf = hat(u, 'leitung', 'buchhaltung');
-  const finanzen = hat(u, 'buchhaltung');
+  const m = await modulListe();
+  const finanzen = hat(u, 'buchhaltung') && m.buchhaltung;
 
   const [reihe, shows, kanaele, letzte, offen, mailFehler, belegeFaellig, kassaHeute, schichten] = await Promise.all([
     tagesreihe(z30),
@@ -92,12 +94,12 @@ export default async function Uebersicht() {
     mailFehler > 0 && { text: `${mailFehler} E-Mail${mailFehler === 1 ? ' konnte' : 's konnten'} nicht verschickt werden`, href: '/emails?status=fehler' },
     finanzen && belegeFaellig > 0 && { text: `${belegeFaellig} Eingangsrechnung${belegeFaellig === 1 ? '' : 'en'} in den nächsten 7 Tagen fällig`, href: '/buchhaltung/belege' },
     finanzen && !uvaGebucht && { text: `UVA ${vormonat.slice(5)}/${vormonat.slice(0, 4)} noch nicht gebucht`, href: `/buchhaltung/uva?monat=${vormonat}` },
-    schichten > 0 && hat(u, 'kassa') && { text: `${schichten} Kassaschicht${schichten === 1 ? '' : 'en'} offen`, href: '/kassa/schicht' },
+    m.kassa && schichten > 0 && hat(u, 'kassa') && { text: `${schichten} Kassaschicht${schichten === 1 ? '' : 'en'} offen`, href: '/kassa/schicht' },
   ].filter(Boolean) as { text: string; href: string }[];
 
   const schnell = [
     hat(u, 'leitung', 'kassa') && { href: '/bestellungen/neu', label: 'Telefonverkauf' },
-    hat(u, 'kassa') && { href: '/kassa', label: 'Kassa öffnen' },
+    m.kassa && hat(u, 'kassa') && { href: '/kassa', label: 'Kassa öffnen' },
     hat(u, 'einlass') && { href: '/einlass', label: 'Einlass-Scanner' },
     hat(u, 'leitung') && { href: '/vorstellungen/neu', label: 'Vorstellungen anlegen' },
     finanzen && { href: '/buchhaltung/belege', label: 'Beleg erfassen' },
@@ -133,7 +135,7 @@ export default async function Uebersicht() {
           <Kennzahl label="Ticketumsatz heute" wert={formatEur(umsatzHeute)} vergleich={{ jetzt: umsatzHeute, vorher: umsatzGestern, text: `gestern ${formatEur(umsatzGestern)}` }} />
           <Kennzahl label="Ticketumsatz 7 Tage" wert={formatEur(sieben)} vergleich={{ jetzt: sieben, vorher: siebenVorher, text: 'vs. Vorwoche' }} />
           <Kennzahl label="Auslastung nächste 7 Tage" wert={`${auslastung7} %`} hinweis={`${naechste7.length} Vorstellungen à ${KAPAZITAET} Plätze`} />
-          <Kennzahl label="Kassa heute" wert={formatEur(kassaHeute._sum.totalCents ?? 0)} hinweis={`${kassaHeute._count} Belege`} />
+          {m.kassa && <Kennzahl label="Kassa heute" wert={formatEur(kassaHeute._sum.totalCents ?? 0)} hinweis={`${kassaHeute._count} Belege`} />}
         </div>
       )}
 
