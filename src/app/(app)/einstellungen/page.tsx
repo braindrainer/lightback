@@ -58,7 +58,7 @@ function Url({ label, url, hinweis }: { label: string; url: string; hinweis?: st
 const ABSCHNITTE = [['funktionen', 'Funktionen'], ['firma', 'Firma'], ['rechnungen', 'Rechnungen'], ['vorstellungen', 'Vorstellungen'], ['email', 'E-Mail'], ['zahlung', 'Zahlungsanbieter'], ['demo', 'Demo-Modus']] as const;
 
 export default async function Einstellungen() {
-  await requireRole('admin');
+  await requireRole('einstellungen');
   const s = await getSettings();
   const k = (s.paymentConfig ?? {}) as Konfig;
   const m = modulStand(s.module);

@@ -4,10 +4,12 @@ import { SignJWT, jwtVerify } from 'jose';
 export const SESSION_COOKIE = process.env.NODE_ENV === 'production' ? '__Host-lb_session' : 'lb_session';
 export const MAX_AGE = 60 * 60 * 12; // eine Arbeitsschicht
 
-export const ROLLEN = ['admin', 'leitung', 'buchhaltung', 'kassa', 'einlass'] as const;
+export const ROLLEN = ['admin', 'gesamt', 'leitung', 'buchhaltung', 'kassa', 'einlass'] as const;
 export type Rolle = (typeof ROLLEN)[number];
+/** Prüfrolle nur für Einstellungen: hat nur admin, „gesamt“ nicht */
+export type Pruefrolle = Rolle | 'einstellungen';
 export const ROLLEN_NAME: Record<Rolle, string> = {
-  admin: 'Administration', leitung: 'Leitung', buchhaltung: 'Buchhaltung', kassa: 'Kassa', einlass: 'Einlass',
+  admin: 'Administration', gesamt: 'Vollzugriff ohne Einstellungen', leitung: 'Leitung', buchhaltung: 'Buchhaltung', kassa: 'Kassa', einlass: 'Einlass',
 };
 
 const key = () => {

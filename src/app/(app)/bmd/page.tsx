@@ -95,14 +95,14 @@ export default async function BmdSeite() {
             <li><code className="font-mono">POST {app}/api/bmd/v1/laeufe/&#123;nummer&#125;/rueckmeldung</code> mit <code className="font-mono">{'{"ok":true,"referenz":"Stapel 2026-118"}'}</code> oder <code className="font-mono">{'{"ok":false,"fehler":"…"}'}</code></li>
           </ol>
           <p className="mt-2 text-sm text-muted">Anmeldung mit <code className="font-mono">Authorization: Bearer loc_bmd_…</code>. Jede Abholung und Rückmeldung steht im Protokoll.</p>
-          {hat(u, 'admin') && (
+          {hat(u, 'einstellungen') && (
             <Formular action={konnektorSchluessel} knopf={s.bmdKeyHash ? 'Neuen Schlüssel erstellen' : 'Schlüssel erstellen'} variante="btn-secondary" bestaetigen={s.bmdKeyHash ? 'Der bisherige Schlüssel wird sofort ungültig. Fortfahren?' : undefined} className="mt-4">
               <p className="text-sm">{s.bmdKeyHash ? <>Aktueller Schlüssel beginnt mit <code className="font-mono">{s.bmdKeyPrefix}…</code></> : 'Noch kein Schlüssel.'}</p>
             </Formular>
           )}
         </Abschnitt>
 
-        {hat(u, 'admin') && (
+        {hat(u, 'einstellungen') && (
           <Formular action={bmdMailSpeichern} knopf="Speichern" className="card p-5">
             <h2 className="h2">Kopie per E-Mail</h2>
             <p className="mt-1 mb-3 text-sm text-muted">Ohne Konnektor: jeder Lauf geht als Anhang an diese Adresse, z. B. an die Steuerberatung. Leer = kein Versand.</p>

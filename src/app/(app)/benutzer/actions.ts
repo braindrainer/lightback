@@ -31,6 +31,7 @@ export async function benutzerAnlegen(_p: Ergebnis, fd: FormData): Promise<Ergeb
       username: z.string().trim().toLowerCase().regex(/^[a-z0-9._-]{3,32}$/, 'Benutzername: 3–32 Zeichen, nur Kleinbuchstaben, Ziffern, Punkt, Bindestrich, Unterstrich.'),
       passwort: z.string().refine((v) => v === '' || v.length >= 12, 'Das Passwort braucht mindestens 12 Zeichen – oder leer lassen, dann erzeugen wir eines.'),
     }).parse({ username: fd.get('username'), name: fd.get('name'), email: fd.get('email'), roles: fd.getAll('roles'), pin: fd.get('pin') ?? '', passwort: fd.get('passwort') ?? '' });
+    if (e.roles.includes('admin') && !ich.roles.includes('admin')) return { fehler: 'Die Rolle Administration vergibt nur die Administration.' };
     const pw = e.passwort || neuesPasswort();
     const u = await db.user.create({ data: { username: e.username, name: e.name, email: e.email, roles: e.roles, passwordHash: await bcrypt.hash(pw, 12), pin: e.pin ? await bcrypt.hash(e.pin, 10) : null } });
     await audit(ich, 'benutzer_angelegt', 'user', u.id, { passwort: e.passwort ? 'vorgegeben' : 'erzeugt' }, { nachher: { username: u.username, name: u.name, email: u.email, roles: u.roles, active: u.active, pin: e.pin ? 'gesetzt' : 'keine' } });
@@ -46,7 +47,9 @@ export async function benutzerSpeichern(_p: Ergebnis, fd: FormData): Promise<Erg
   try {
     const id = String(fd.get('id'));
     const e = basis.extend({ active: z.boolean() }).parse({ name: fd.get('name'), email: fd.get('email'), roles: fd.getAll('roles'), pin: fd.get('pin') ?? '', active: fd.get('active') === 'on' });
-    if (id === ich.id && !e.roles.includes('admin')) return { fehler: 'Sie können sich die Rolle Administration nicht selbst entziehen.' };
+    const ziel = await db.user.findUniqueOrThrow({ where: { id }, select: { roles: true } });
+    if (!ich.roles.includes('admin') && (ziel.roles.includes('admin') || e.roles.includes('admin'))) return { fehler: 'Administration-Konten bearbeitet nur die Administration.' };
+    if (id === ich.id && ich.roles.includes('admin') && !e.roles.includes('admin')) return { fehler: 'Sie können sich die Rolle Administration nicht selbst entziehen.' };
     if (id === ich.id && !e.active) return { fehler: 'Sie können sich nicht selbst deaktivieren.' };
     const vorher = await db.user.findUniqueOrThrow({ where: { id } });
     const pinLoeschen = fd.get('pinLoeschen') === 'on';
@@ -66,6 +69,7 @@ export async function passwortZuruecksetzen(_p: Ergebnis, fd: FormData): Promise
   const id = String(fd.get('id'));
   const u = await db.user.findUnique({ where: { id } });
   if (!u) return { fehler: 'Benutzer nicht gefunden.' };
+  if (u.roles.includes('admin') && !ich.roles.includes('admin')) return { fehler: 'Passwörter von Administration-Konten setzt nur die Administration zurück.' };
   const pw = neuesPasswort();
   await db.user.update({ where: { id }, data: { passwordHash: await bcrypt.hash(pw, 12) } });
   await audit(ich, 'passwort_zurueckgesetzt', 'user', id, { username: u.username, hinweis: 'neues Passwort erzeugt (nicht protokolliert)' });

@@ -11,10 +11,10 @@ export const viewport: Viewport = { themeColor: '#070b14', colorScheme: 'dark' }
 
 const CSS = `
 html,body{background:#0c1322 !important}
-.tm{min-height:100dvh;background:#0c1322;color:#f4efe6;font-family:"LOC Figtree",system-ui,sans-serif;padding:0 0 calc(28px + env(safe-area-inset-bottom))}
+.tm{min-height:100dvh;background:#0c1322;color:#f4efe6;font-family:"Inter",system-ui,sans-serif;padding:0 0 calc(28px + env(safe-area-inset-bottom))}
 .tm a{color:inherit}
 .tm-kopf{text-align:center;padding:calc(18px + env(safe-area-inset-top)) 20px 6px}
-.tm-kopf h1{font:600 32px/1.1 "LOC Cormorant",Georgia,serif;margin:6px 0 6px;color:#ecd3a0}
+.tm-kopf h1{font:600 30px/1.15 "Inter",system-ui,sans-serif;margin:6px 0 6px;color:#ecd3a0}
 .tm-kopf p{margin:0;color:#c4bfb3;font-size:15px}
 .tm-hell{display:flex;align-items:center;justify-content:center;gap:8px;margin:14px auto 0;max-width:420px;padding:0 20px;font-size:14px;color:#ecd3a0;text-align:center}
 .tm-hell svg{flex:none}

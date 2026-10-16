@@ -2,6 +2,7 @@ import { ROLLEN, ROLLEN_NAME, type Rolle } from '@/lib/session';
 
 export const ROLLEN_TEXT: Record<Rolle, string> = {
   admin: 'Alles, dazu Benutzer, Einstellungen, Zahlungsanbieter und Protokoll',
+  gesamt: 'Alles wie Administration, aber ohne Einstellungen, Zahlungsanbieter und Schlüssel; vergibt keine Administration',
   leitung: 'Vorstellungen, Bestellungen, Kund:innen, Partner & API, Statistik, E-Mails',
   buchhaltung: 'Rechnungen, Zahlungen, Buchhaltung, Statistik',
   kassa: 'Kassa vor Ort und Telefonverkauf',

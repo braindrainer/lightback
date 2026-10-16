@@ -41,7 +41,7 @@ export async function rueckmeldungErfassen(_p: Ergebnis, fd: FormData): Promise<
 }
 
 export async function konnektorSchluessel(_p: Ergebnis): Promise<Ergebnis> {
-  const ich = await assertRole('admin');
+  const ich = await assertRole('einstellungen');
   const key = BMD_KEY_PREFIX + randomBytes(24).toString('base64url');
   const prefix = key.slice(0, BMD_KEY_PREFIX.length + 6);
   await db.settings.update({ where: { id: 1 }, data: { bmdKeyHash: schluesselHash(key), bmdKeyPrefix: prefix } });
@@ -51,7 +51,7 @@ export async function konnektorSchluessel(_p: Ergebnis): Promise<Ergebnis> {
 }
 
 export async function bmdMailSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebnis> {
-  const ich = await assertRole('admin');
+  const ich = await assertRole('einstellungen');
   try {
     const mail = z.union([z.literal(''), z.email('Bitte eine gültige E-Mail-Adresse angeben.')]).parse(String(fd.get('bmdMail') ?? '').trim());
     const alt = await db.settings.findUniqueOrThrow({ where: { id: 1 }, select: { bmdMail: true } });

@@ -1,4 +1,4 @@
-// Markenauftritt für Dokumente (Ticket, Rechnung): Farben wie im Shop, Schriften selbst gehostet.
+// Markenauftritt für Dokumente (Ticket, Rechnung): Farben wie im Shop, Schrift Inter selbst gehostet.
 // Im PDF (Gotenberg, ohne JavaScript) liegen Schriften und Bilder als Beilagen neben index.html,
 // im Browser kommen sie aus /fonts und /img.
 import { readFile } from 'node:fs/promises';
@@ -16,15 +16,12 @@ const LATIN = 'U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U
 const LATIN_EXT = 'U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF';
 
 const SCHRIFTEN = [
-  { family: 'LOC Figtree', style: 'normal', weight: '300 900', datei: 'figtree-latin-wght-normal.woff2', range: LATIN },
-  { family: 'LOC Figtree', style: 'normal', weight: '300 900', datei: 'figtree-latin-ext-wght-normal.woff2', range: LATIN_EXT },
-  { family: 'LOC Cormorant', style: 'normal', weight: '300 700', datei: 'cormorant-garamond-latin-wght-normal.woff2', range: LATIN },
-  { family: 'LOC Cormorant', style: 'normal', weight: '300 700', datei: 'cormorant-garamond-latin-ext-wght-normal.woff2', range: LATIN_EXT },
-  { family: 'LOC Cormorant', style: 'italic', weight: '300 700', datei: 'cormorant-garamond-latin-wght-italic.woff2', range: LATIN },
+  { family: 'Inter', style: 'normal', weight: '100 900', datei: 'inter-latin-wght-normal.woff2', range: LATIN },
+  { family: 'Inter', style: 'normal', weight: '100 900', datei: 'inter-latin-ext-wght-normal.woff2', range: LATIN_EXT },
 ];
 
-export const SCHRIFT_TEXT = '"LOC Figtree", "Helvetica Neue", Arial, sans-serif';
-export const SCHRIFT_TITEL = '"LOC Cormorant", Georgia, "Times New Roman", serif';
+export const SCHRIFT_TEXT = '"Inter", "Helvetica Neue", Arial, sans-serif';
+export const SCHRIFT_TITEL = SCHRIFT_TEXT;
 
 /** @font-face-Regeln; im PDF liegen die Dateien direkt neben dem Dokument */
 export const schriftCss = (m: Modus) =>

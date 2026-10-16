@@ -15,7 +15,7 @@ const fehlerText = (e: unknown) => (e instanceof z.ZodError ? e.issues.map((i) =
 const fertig = () => revalidatePath('/', 'layout');
 
 export async function firmaSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebnis> {
-  const ich = await assertRole('admin');
+  const ich = await assertRole('einstellungen');
   try {
     const pflicht = (m: string) => z.string().min(1, m).max(200);
     const d = z.object({
@@ -33,7 +33,7 @@ export async function firmaSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebn
 }
 
 export async function rechnungenSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebnis> {
-  const ich = await assertRole('admin');
+  const ich = await assertRole('einstellungen');
   try {
     const d = z.object({
       invoicePrefix: z.string().max(10).regex(/^[A-Za-z0-9-]*$/, 'Präfix: nur Buchstaben, Ziffern und Bindestrich.'),
@@ -49,7 +49,7 @@ export async function rechnungenSpeichern(_p: Ergebnis, fd: FormData): Promise<E
 }
 
 export async function mailSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebnis> {
-  const ich = await assertRole('admin');
+  const ich = await assertRole('einstellungen');
   try {
     const d = z.object({
       smtpHost: z.string().max(200).regex(/^[A-Za-z0-9.-]*$/, 'SMTP-Server: nur Hostname, z. B. smtp.example.com.'),
@@ -70,7 +70,7 @@ export async function mailSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebni
 }
 
 export async function mailTesten(): Promise<Ergebnis> {
-  await assertRole('admin');
+  await assertRole('einstellungen');
   const s = await getSettings();
   if (!s.smtpHost) return { fehler: 'Kein SMTP-Server eingetragen.' };
   try {
@@ -92,7 +92,7 @@ type Konfig = {
 const geheim = (neu: string, alt?: string) => (neu === '-' ? undefined : neu ? encrypt(neu) : alt);
 
 export async function zahlungSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebnis> {
-  const ich = await assertRole('admin');
+  const ich = await assertRole('einstellungen');
   try {
     const s = await getSettings();
     const alt = (s.paymentConfig ?? {}) as Konfig;
@@ -120,7 +120,7 @@ export async function zahlungSpeichern(_p: Ergebnis, fd: FormData): Promise<Erge
 }
 
 export async function demoSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebnis> {
-  const ich = await assertRole('admin');
+  const ich = await assertRole('einstellungen');
   const demo = fd.get('demoMode') === 'an';
   const alt = await getSettings();
   await db.settings.update({ where: { id: 1 }, data: { demoMode: demo } });
@@ -130,7 +130,7 @@ export async function demoSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebni
 }
 
 export async function vorstellungenSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebnis> {
-  const ich = await assertRole('admin');
+  const ich = await assertRole('einstellungen');
   try {
     const d = z.object({
       reservierungVerfallMin: z.coerce.number().int('Bitte ganze Minuten angeben.').min(0, 'Mindestens 0 Minuten.').max(1440, 'Höchstens 1440 Minuten (24 Stunden).'),
@@ -145,7 +145,7 @@ export async function vorstellungenSpeichern(_p: Ergebnis, fd: FormData): Promis
 }
 
 export async function moduleSpeichern(_p: Ergebnis, fd: FormData): Promise<Ergebnis> {
-  const ich = await assertRole('admin');
+  const ich = await assertRole('einstellungen');
   const alt = modulStand((await getSettings()).module);
   const neu = Object.fromEntries(MODUL_KEYS.map((k) => [k, fd.get(`modul_${k}`) === 'on'])) as ModulStand;
   await db.settings.update({ where: { id: 1 }, data: { module: neu } });

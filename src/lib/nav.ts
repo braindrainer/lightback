@@ -1,8 +1,8 @@
 import type { Modul } from './module';
-import type { Rolle } from './session';
+import type { Pruefrolle } from './session';
 
 // Navigation – jede Seite prüft die Rolle zusätzlich selbst (requireRole)
-export type NavItem = { href: string; label: string; rollen: Rolle[]; icon: string; modul?: Modul };
+export type NavItem = { href: string; label: string; rollen: Pruefrolle[]; icon: string; modul?: Modul };
 export const NAV: { titel: string; items: NavItem[] }[] = [
   { titel: '', items: [{ href: '/', label: 'Übersicht', rollen: [], icon: 'M3 12l9-8 9 8M5 10v10h14V10' }] },
   { titel: 'Verkauf', items: [
@@ -28,7 +28,7 @@ export const NAV: { titel: string; items: NavItem[] }[] = [
   { titel: 'System', items: [
     { href: '/emails', label: 'E-Mails', rollen: ['leitung'], icon: 'M3 6h18v12H3zM3 6l9 7 9-7' },
     { href: '/benutzer', label: 'Benutzer', rollen: ['admin'], icon: 'M17 20a5 5 0 00-10 0M12 12a4 4 0 100-8 4 4 0 000 8' },
-    { href: '/einstellungen', label: 'Einstellungen', rollen: ['admin'], icon: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19 12l2-1-2-4-2 1-2-2V4h-4v2L9 7 7 6 5 10l2 1v2l-2 1 2 4 2-1 2 2v2h4v-2l2-2 2 1 2-4-2-1z' },
+    { href: '/einstellungen', label: 'Einstellungen', rollen: ['einstellungen'], icon: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19 12l2-1-2-4-2 1-2-2V4h-4v2L9 7 7 6 5 10l2 1v2l-2 1 2 4 2-1 2 2v2h4v-2l2-2 2 1 2-4-2-1z' },
     { href: '/protokoll', label: 'Protokoll', rollen: ['admin'], icon: 'M12 8v4l3 2M12 21a9 9 0 110-18 9 9 0 010 18z' },
   ] },
 ];

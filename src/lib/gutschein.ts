@@ -10,8 +10,8 @@ import { shopUrl } from './ticket-html';
 import { qrPng } from './tickets';
 import { markenLayout } from './ticket-mail';
 
-const SERIF = "'Cormorant Garamond',Georgia,'Times New Roman',serif";
-const SANS = "Figtree,'Helvetica Neue',Helvetica,Arial,sans-serif";
+const SERIF = "Inter,'Helvetica Neue',Helvetica,Arial,sans-serif";
+const SANS = "Inter,'Helvetica Neue',Helvetica,Arial,sans-serif";
 
 /** Gutscheinkarte für Mails (Tabellen, Inline-Stile) */
 export function gutscheinKarteMail(v: { code: string; valueCents: number; remainingCents: number; validUntil: Date | null }, cid: string) {

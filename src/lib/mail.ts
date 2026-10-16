@@ -39,10 +39,10 @@ export function fuellen(vorlage: string, werte: Record<string, string>) {
 /** Schlichtes, barrierearmes Mail-Layout (Tabellen für Mailprogramme, echte Überschriften, hoher Kontrast) */
 export function layout(titel: string, inhaltHtml: string, fuss: string) {
   return `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(titel)}</title></head>
-<body style="margin:0;background:#f6f2e9;font-family:Helvetica,Arial,sans-serif;color:#121a2b">
+<body style="margin:0;background:#f6f2e9;font-family:Inter,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#121a2b">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden">
-<tr><td style="background:#070b14;padding:22px 28px;color:#ecd3a0;font-family:Georgia,serif;font-size:22px;letter-spacing:.04em">Light of Creation</td></tr>
+<tr><td style="background:#070b14;padding:22px 28px;color:#ecd3a0;font-family:Inter,'Helvetica Neue',Helvetica,Arial,sans-serif;font-weight:600;font-size:22px;letter-spacing:.04em">Light of Creation</td></tr>
 <tr><td style="padding:28px;font-size:16px;line-height:1.6">${inhaltHtml}</td></tr>
 <tr><td style="padding:18px 28px;background:#f3efe7;font-size:13px;line-height:1.5;color:#525b6e">${fuss}</td></tr>
 </table></td></tr></table></body></html>`;

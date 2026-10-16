@@ -30,7 +30,7 @@ export default async function GutscheinKarte({ v, druck }: { v: GutscheinDaten; 
             {z.key !== 'aktiv' && <span className="rounded-full border border-[#ff9b93]/60 bg-[#3a1514] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-[#ffc4be]">{z.text}</span>}
           </div>
           <p className={`text-[11px] font-semibold uppercase tracking-[0.28em] text-gold ${druck ? 'mt-[8mm]' : 'mt-6'}`}>{v.kind === 'partner' ? `Gutschein · ${v.issuer}` : 'Gutschein'}</p>
-          <p className={`num font-marke font-semibold leading-none text-gold-hell ${druck ? 'mt-2 text-[44pt]' : 'mt-2 text-6xl sm:text-7xl'}`}>{formatEur(v.remainingCents)}</p>
+          <p className={`num font-serif font-semibold leading-none text-gold-hell ${druck ? 'mt-2 text-[44pt]' : 'mt-2 text-6xl sm:text-7xl'}`}>{formatEur(v.remainingCents)}</p>
           <div className={druck ? 'mt-3' : 'mt-4 max-w-sm'}>
             <div className="flex items-baseline justify-between text-[13px] text-[#c4bfb3]">
               <span>{teil ? <>Restwert von {formatEur(v.valueCents)}</> : 'Voller Wert'}</span>

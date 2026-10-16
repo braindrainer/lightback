@@ -6,8 +6,8 @@ import { formatEur } from './money';
 import { SITZ } from './saal';
 import { ART_TEXT, EINLASS_MIN, ORT, terminText, type TicketDaten } from './ticket-html';
 
-const SERIF = "'Cormorant Garamond',Georgia,'Times New Roman',serif";
-const SANS = "Figtree,'Helvetica Neue',Helvetica,Arial,sans-serif";
+const SERIF = "Inter,'Helvetica Neue',Helvetica,Arial,sans-serif";
+const SANS = "Inter,'Helvetica Neue',Helvetica,Arial,sans-serif";
 
 /** Ticketkarten + Knöpfe; ersetzt {{tickets_html}} in der Vorlage „buchung“ */
 export function ticketKartenMail(liste: { t: TicketDaten; cid: string }[], links: { mobil: string; pdf: string; verwalten: string }) {
