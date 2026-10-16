@@ -3,7 +3,6 @@ import type { Metadata, Viewport } from 'next';
 import { notFound } from 'next/navigation';
 import { esc } from '@/lib/marke';
 import { bestellungMitTickets, ORT, qrFuer, shopUrl, terminText, ticketCss, ticketKarte, ticketLabel, ticketsAusBestellung } from '@/lib/ticket-html';
-import Wischpunkte from '@/components/tickets/Wischpunkte';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: { absolute: 'Ihre Tickets – Light of Creation' }, robots: { index: false, follow: false, nocache: true }, referrer: 'no-referrer' };
@@ -18,19 +17,10 @@ html,body{background:#0c1322 !important}
 .tm-kopf p{margin:0;color:#c4bfb3;font-size:15px}
 .tm-hell{display:flex;align-items:center;justify-content:center;gap:8px;margin:14px auto 0;max-width:420px;padding:0 20px;font-size:14px;color:#ecd3a0;text-align:center}
 .tm-hell svg{flex:none}
-.tm-karten{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;padding:16px max(20px,calc(50vw - 200px)) 8px;scrollbar-width:none;-webkit-overflow-scrolling:touch;outline-offset:-3px}
-.tm-karten::-webkit-scrollbar{display:none}
-.tm-karten:focus-visible{outline:3px solid #ecd3a0}
-.tm-karte{flex:0 0 min(86vw,400px);scroll-snap-align:center;scroll-snap-stop:always;font-size:min(4.15vw,16.5px)}
+.tm-karten{display:flex;flex-direction:column;align-items:center;gap:22px;padding:16px 20px 8px;list-style:none;margin:0}
+.tm-karte{width:min(100%,400px);font-size:min(4.15vw,16.5px)}
 .tm-karte .lt{border:1px solid #2a3654;box-shadow:0 18px 40px rgba(0,0,0,.45)}
 .tm-karte .lt-qr{width:14.5em;height:14.5em}
-.tm-punkte{text-align:center;margin-top:6px}
-.tm-zaehler{margin:0 0 4px;font-size:14px;color:#c4bfb3}
-.tm-punkte ul{display:flex;justify-content:center;gap:2px;list-style:none;margin:0;padding:0}
-.tm-punkte button{width:28px;height:28px;border:0;background:transparent;display:grid;place-items:center;cursor:pointer;border-radius:50%}
-.tm-punkte button span{width:9px;height:9px;border-radius:50%;border:1.5px solid #d9b877}
-.tm-punkte button[aria-current] span{background:#d9b877;width:11px;height:11px}
-.tm-punkte button:focus-visible{outline:2px solid #ecd3a0}
 .tm-aktionen{max-width:440px;margin:22px auto 0;padding:0 20px;display:grid;gap:10px}
 .tm-knopf{display:flex;align-items:center;gap:12px;min-height:52px;padding:10px 16px;border-radius:14px;background:#121b2e;border:1px solid #2a3654;text-decoration:none;font-weight:600;font-size:16px}
 .tm-knopf:hover{border-color:#d9b877}
@@ -41,7 +31,7 @@ html,body{background:#0c1322 !important}
 .tm-knopf.gold svg{color:#070b14}
 .tm-knopf.gold small{color:#2b2414}
 .tm-fuss{max-width:440px;margin:26px auto 0;padding:0 20px;font-size:13px;line-height:1.5;color:#b9b3a6;text-align:center}
-@media (min-width:900px){.tm-karten{flex-wrap:wrap;justify-content:center;overflow:visible;padding:20px}.tm-punkte{display:none}}
+@media (min-width:900px){.tm-karten{flex-direction:row;flex-wrap:wrap;justify-content:center;align-items:flex-start;padding:20px}}
 `;
 
 const I = {
@@ -74,10 +64,9 @@ export default async function TicketsMobil({ params }: { params: Promise<{ token
         <p>Bestellung {o.number}{aktiv.length > 1 ? ` · ${aktiv.length} Tickets` : ''}</p>
       </header>
       {aktiv.length > 0 && <p className="tm-hell"><Icon d={I.sonne} />Bitte stellen Sie den Bildschirm beim Einlass hell.</p>}
-      <div id="tm-karten" className="tm-karten" role="region" aria-label={liste.length > 1 ? 'Tickets – seitlich wischen für weitere' : 'Ticket'} tabIndex={0}>
-        {karten.map(({ t, html }) => <div key={t.id} className="tm-karte" dangerouslySetInnerHTML={{ __html: html }} />)}
-      </div>
-      <Wischpunkte ziel="tm-karten" labels={liste.map(ticketLabel)} />
+      <ul className="tm-karten" aria-label={liste.length > 1 ? `${liste.length} Tickets` : 'Ticket'}>
+        {karten.map(({ t, html }) => <li key={t.id} className="tm-karte" aria-label={ticketLabel(t)} dangerouslySetInnerHTML={{ __html: html }} />)}
+      </ul>
       <nav className="tm-aktionen" aria-label="Weitere Möglichkeiten">
         {aktiv.length > 0 && <a className="tm-knopf gold" href={`${pdf}?format=a6&variante=digital&download=1`}><Icon d={I.pdf} /><span>Als PDF speichern<small>Alle Tickets in einer Datei</small></span></a>}
         {aktiv.length > 0 && <a className="tm-knopf" href={pdf} target="_blank" rel="noopener"><Icon d={I.druck} /><span>Zum Ausdrucken (A4)<small>Öffnet in neuem Fenster</small></span></a>}
