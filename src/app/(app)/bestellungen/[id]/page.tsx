@@ -73,12 +73,13 @@ export default async function Bestellung({ params, searchParams }: { params: Pro
         status={<><StatusPill status={o.status} /><span className="pill bg-paper-deep text-ink ring-1 ring-inset ring-line">{KANAL_NAME[o.channel] ?? o.channel}{o.partner ? ` · ${o.partner.name}` : ''}</span></>}
         untertitel={<>Bestellt {fmtDatumZeit(o.createdAt)}{ersteller ? ` von ${ersteller.name}` : ''}{o.partnerRef ? <> · Partner-Referenz <span className="font-mono">{o.partnerRef}</span></> : ''}</>}
         aktionen={<>
+          {tickets && <a href={`/t/${o.manageToken}`} target="_blank" rel="noopener" className="btn-secondary"><Icon name="ticket" className="h-4 w-4" />{gueltig.length === 1 ? 'Ticket öffnen' : 'Tickets öffnen'}<span className="sr-only"> (neues Fenster)</span></a>}
           {tickets && c?.email && <AktionKnopf leise action={ticketsSenden.bind(null, o.id)}><Icon name="mail" className="h-4 w-4" />Tickets erneut senden</AktionKnopf>}
           {o.status !== 'offen' && <UmbuchungDialog action={umbuchungAktion.bind(null, o.id)} tickets={zeilen} shows={shows} aktuelleShow={o.showId} fristAbgelaufen={fristAbgelaufen} darfFrist={darfFrist} darfFrei={hat(u, 'leitung')} versteckt={!stornierbar} anfangsOffen={aktion === 'umbuchen' && stornierbar} />}
           {o.status !== 'offen' && <StornoDialog action={stornoAktion.bind(null, o.id)} tickets={zeilen} fristAbgelaufen={fristAbgelaufen} darfFrist={darfFrist} versteckt={!stornierbar} anfangsOffen={aktion === 'stornieren' && stornierbar} />}
         </>}
         menue={[
-          ...(tickets ? [{ label: 'Tickets als PDF', href: `/bestellungen/${o.id}/tickets`, extern: true, icon: 'download' }, { label: 'Mobile Ansicht', href: `/t/${o.manageToken}`, extern: true, icon: 'ticket' }] : []),
+          ...(tickets ? [{ label: 'Tickets als PDF', href: `/bestellungen/${o.id}/tickets`, extern: true, icon: 'download' }, { label: 'Ticket öffnen (wie Kund:in)', href: `/t/${o.manageToken}`, extern: true, icon: 'ticket' }] : []),
           { label: 'Zur Vorstellung', href: `/vorstellungen/${o.showId}`, icon: 'kalender' },
           ...(c ? [{ label: 'Kundenkonto öffnen', href: `/kunden/${c.id}`, icon: 'kunde' }] : []),
           { label: 'Weitere Bestellungen dieser Vorstellung', href: `/bestellungen?show=${o.showId}`, icon: 'liste' },

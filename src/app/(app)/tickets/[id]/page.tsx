@@ -52,6 +52,7 @@ export default async function Ticket({ params }: { params: Promise<{ id: string 
         titel={t.code} mono status={<StatusPill status={t.status} />}
         untertitel={<>{sitzName(t.seatId)} · {fmtDatum(t.show.startsAt)}, {fmtZeit(t.show.startsAt)} Uhr · {t.show.title}</>}
         aktionen={<>
+          {t.status !== 'storniert' && <a href={`/t/${o.manageToken}`} target="_blank" rel="noopener" className="btn-secondary"><Icon name="ticket" className="h-4 w-4" />Ticket öffnen<span className="sr-only"> (neues Fenster)</span></a>}
           <a href={`/tickets/${t.id}/druck`} target="_blank" rel="noopener" className="btn-secondary"><Icon name="druck" className="h-4 w-4" />Druckansicht<span className="sr-only"> (neues Fenster)</span></a>
           {hat(u, 'leitung', 'kassa') && t.status !== 'storniert' && c?.email && <AktionKnopf leise action={ticketSenden.bind(null, t.id)}><Icon name="mail" className="h-4 w-4" />Ticket erneut senden</AktionKnopf>}
           {leitung && t.status === 'gueltig' && ['bezahlt', 'teilstorniert'].includes(o.status) && (

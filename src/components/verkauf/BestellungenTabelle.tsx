@@ -67,7 +67,7 @@ export default function BestellungenTabelle({ zeilen, sort, dir, sortHref, darfF
     ...(z.stornierbar && z.hatEmail ? [{ label: 'Tickets erneut senden', onSelect: () => senden(z), icon: 'mail' }] : []),
     ...(z.stornierbar ? [
       { label: 'Tickets als PDF', href: `/bestellungen/${z.id}/tickets`, extern: true, icon: 'download' },
-      { label: 'Mobile Ansicht', href: `/t/${z.manageToken}`, extern: true, icon: 'ticket' },
+      { label: 'Ticket öffnen', href: `/t/${z.manageToken}`, extern: true, icon: 'ticket' },
     ] : []),
     ...(z.rechnung ? [{ label: 'Rechnung ansehen', onSelect: () => setDialog({ art: 'rechnung', zeile: z }), icon: 'rechnung' }] : []),
     { label: 'Bearbeiten', onSelect: () => oeffnen('bearbeiten', z), icon: 'bearbeiten' },
