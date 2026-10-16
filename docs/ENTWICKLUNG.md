@@ -16,7 +16,7 @@ Prisma 6 + PostgreSQL 18, Tailwind v4. Live: https://lightback.skillful.at (Dock
   Kopfzelle `rtab-kopf`; `tabelle-frei` an der Karte = Tabellenkopf bleibt ab 1280 px stehen) und Komponenten aus `src/components/ui.tsx`:
   `PageHeader` (mit `krumen`), `DetailKopf` (Brotkrumen, Status, Eckdaten, Aktionen, Menü „⋯“), `Kennzahlen`, `Feldliste` (kopierbare Werte), `Abschnitt`,
   `LeerZustand`/`Empty`, `Hinweis`, `FilterChips`, `Fortschritt`, `Money`, `StatusPill`, dazu aus `ui-client.tsx` `Menue`, `Drawer`/`DrawerKnopf`, `Modal`,
-  `Bestaetigen`, `Kopieren` und `toast()` (Ausgabe über `ToastBereich` im Layout). Schrift: Figtree (UI), Cormorant nur für Titel und große Zahlen.
+  `Bestaetigen`, `Kopieren` und `toast()` (Ausgabe über `ToastBereich` im Layout). Schrift im Backend: Inter (auch Titel); Figtree/Cormorant nur in der Kundensicht (Tickets, Mails, Gutschein, `marke.ts`, Klasse `font-marke`).
   Seitenbreite max. 1400 px (Layout). Symbole: `Icon` aus `src/components/icons.tsx`.
 - Barrierefreiheit WCAG 2.2 AA: echte Überschriften, Labels an jedem Feld, Fehlermeldungen mit `role="alert"`,
   Tastaturbedienung, Kontrast ≥ 4,5:1, Ziele ≥ 24 px, keine reine Farbcodierung.
